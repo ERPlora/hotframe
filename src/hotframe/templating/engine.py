@@ -30,20 +30,33 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 logger = logging.getLogger(__name__)
 
-# Root templates directory: hotframe/templates/
-# __file__ = hotframe/templating/engine.py → parent.parent.parent = hotframe root
-_GLOBAL_TEMPLATE_DIR = Path(__file__).parent.parent.parent / "templates"
+# Root templates directory: resolved from the project's working directory,
+# not from the hotframe package itself. Like Django, templates/ lives in
+# the project root, not inside the framework.
+_GLOBAL_TEMPLATE_DIR = Path.cwd() / "templates"
 
 
 def _collect_template_dirs(modules_dir: Path | None) -> list[str]:
     """Build the ordered list of template directories.
 
-    Order: global templates first, then all modules (kernel + dynamic).
-    Kernel (system) modules and dynamic modules both live in ``modules/``
-    since Sprint 4, so a single scan covers both.
-    Within each group, alphabetical order (deterministic across containers).
+    Order: global templates first (CWD/templates/), then app template
+    dirs (apps/*/templates/), then module template dirs.
     """
-    dirs: list[str] = [str(_GLOBAL_TEMPLATE_DIR)]
+    dirs: list[str] = []
+
+    # 1. Project-level templates (CWD/templates/)
+    if _GLOBAL_TEMPLATE_DIR.exists():
+        dirs.append(str(_GLOBAL_TEMPLATE_DIR))
+
+    # 2. App template dirs (apps/*/templates/) — scan apps/ if it exists
+    apps_dir = Path.cwd() / "apps"
+    if apps_dir.exists():
+        for app_dir in sorted(apps_dir.iterdir()):
+            if not app_dir.is_dir() or app_dir.name.startswith((".", "_")):
+                continue
+            tpl_dir = app_dir / "templates"
+            if tpl_dir.exists():
+                dirs.append(str(tpl_dir))
 
     # Modules directory — contains both kernel (is_system=True) and dynamic
     # modules downloaded from S3.
