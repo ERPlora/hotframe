@@ -78,7 +78,7 @@ docs = [
 
 [project.urls]
 Homepage = "https://github.com/ERPlora/hotframe"
-Documentation = "https://hotframe.dev"
+Documentation = "https://github.com/ERPlora/hotframe/tree/main/docs"
 Repository = "https://github.com/ERPlora/hotframe"
 Issues = "https://github.com/ERPlora/hotframe/issues"
 Changelog = "https://github.com/ERPlora/hotframe/blob/main/docs/CHANGELOG.md"

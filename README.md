@@ -153,7 +153,7 @@ The CLI (`hf`) is a Typer application that wraps Uvicorn, Alembic, and the scaff
 
 ## Documentation
 
-Full documentation at [hotframe.dev](https://hotframe.dev) (coming soon).
+Documentation is available in the [docs/](docs/) directory.
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Changelog](docs/CHANGELOG.md)
