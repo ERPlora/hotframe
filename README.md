@@ -2,7 +2,6 @@
   <img src="logo.png" alt="HotFrame" width="200">
 </p>
 
-<h1 align="center">hotframe</h1>
 
 <p align="center">
   <strong>Modular Python web framework with hot-mount dynamic modules.</strong>
