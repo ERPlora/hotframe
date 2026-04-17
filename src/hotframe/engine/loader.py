@@ -1,0 +1,581 @@
+"""
+Module loader — importlib-based dynamic loading, route mount/unmount.
+
+Handles the full lifecycle of bringing a module's Python code into the
+running FastAPI application:
+
+1. Add module path to ``sys.path``
+2. ``importlib.import_module`` the package
+3. Discover ``routes.py`` (HTMX views) and ``api.py`` (REST API)
+4. Mount routers on the FastAPI app
+5. Discover ``events.py``, ``hooks.py``, ``slots.py`` — register with kernel
+6. Discover middleware class from manifest
+7. Bust OpenAPI schema cache
+
+Unloading reverses all of the above and purges ``sys.modules``.
+"""
+
+from __future__ import annotations
+
+import importlib
+import logging
+import sys
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from fastapi import APIRouter, FastAPI
+
+from hotframe.apps.config import ModuleManifest
+from hotframe.apps.registry import ModuleRegistry, RegisteredModule
+from hotframe.engine.import_manager import ImportManager, PurgeReport
+from hotframe.middleware.i18n_support import register_module_locales, unregister_module_locales
+from hotframe.middleware.stack_manager import MiddlewareStackManager
+
+if TYPE_CHECKING:
+    from hotframe.signals.dispatcher import AsyncEventBus
+    from hotframe.signals.hooks import HookRegistry
+    from hotframe.templating.slots import SlotRegistry
+
+logger = logging.getLogger(__name__)
+
+
+class ModuleLoader:
+    """
+    Loads and unloads module code in the running FastAPI process.
+
+    Operates purely at the Python/FastAPI level — no DB, no S3. Those
+    concerns belong to :class:`~hotframe.engine.module_runtime.ModuleRuntime`.
+    """
+
+    def __init__(
+        self,
+        app: FastAPI,
+        registry: ModuleRegistry,
+        event_bus: AsyncEventBus,
+        hooks: HookRegistry,
+        slots: SlotRegistry,
+        import_manager: ImportManager | None = None,
+        stack_manager: MiddlewareStackManager | None = None,
+    ) -> None:
+        self.app = app
+        self.registry = registry
+        self.bus = event_bus
+        self.hooks = hooks
+        self.slots = slots
+        # ImportManager tracks sys.modules per package so purge is exact
+        # instead of prefix-scanning. Keeping the default factory optional
+        # lets tests inject a fresh manager per test.
+        self.import_manager = import_manager or ImportManager()
+        # MiddlewareStackManager rebuilds Starlette's middleware stack
+        # atomically when modules add/remove middleware classes. Created
+        # per-app so tests can inject stubs.
+        self.stack_manager = stack_manager or MiddlewareStackManager(app)
+
+    # ------------------------------------------------------------------
+    # Load
+    # ------------------------------------------------------------------
+
+    async def load_module(
+        self,
+        module_id: str,
+        module_path: Path,
+        manifest: ModuleManifest,
+    ) -> RegisteredModule:
+        """
+        Load a module into the running application.
+
+        Steps:
+            1. Ensure ``module_path.parent`` is in ``sys.path``
+            2. ``importlib.import_module(module_id)``
+            3. Import ``{module_id}.routes`` → get ``router``
+            4. Import ``{module_id}.api`` → get ``api_router``
+            5. Mount HTMX router at ``/m/{module_id}``
+            6. Mount API router at ``/api/v1/m/{module_id}``
+            7. Import ``{module_id}.events`` → call ``register_events(bus, module_id)``
+            8. Import ``{module_id}.hooks`` → call ``register_hooks(hooks, module_id)``
+            9. Import ``{module_id}.slots`` → call ``register_slots(slots, module_id)``
+            10. Import ``{module_id}.services`` → register into SERVICE_REGISTRY
+            11. Import middleware class from ``manifest.MIDDLEWARE``
+            12. Bust OpenAPI cache
+            13. Register in :class:`ModuleRegistry` and return entry
+
+        Args:
+            module_id: The module identifier (e.g. ``inventory``).
+            module_path: Filesystem path to the module package directory.
+            manifest: Validated manifest from ``module.py``.
+
+        Returns:
+            The :class:`RegisteredModule` entry.
+
+        Raises:
+            ImportError: If the base package cannot be imported.
+        """
+        # 1 + 2. Import base package via ImportManager (adds sys.path entry
+        # and tracks every sys.modules entry that appears so purge can be
+        # exact instead of prefix-scanning). If this fails, ImportManager
+        # already cleaned up the half-imported state.
+        if self.import_manager.get_bundle(module_id) is not None:
+            # Reload path: callers invoke ``reload_module`` (unload → load).
+            # If we reach here with a lingering bundle, purge first so the
+            # import is fresh.
+            self.import_manager.purge(module_id)
+        self.import_manager.import_package(module_id, module_id, module_path)
+        self._register_exported_models(module_id)
+
+        # Track what we've registered so we can roll back on failure
+        mounted_routes: list = []
+        events_registered = False
+        hooks_registered = False
+        slots_registered = False
+        locales_registered = False
+        static_mounted = False
+        middleware_added = False
+
+        try:
+            # 3. HTMX routes
+            router = self._try_import_router(module_id, "routes", "router")
+            if router is None:
+                logger.warning("Module %s: no HTMX router found in routes.py", module_id)
+
+            # 4. API routes
+            api_router = self._try_import_router(module_id, "api", "api_router")
+
+            # 5. Mount HTMX router (check for conflicts first)
+            if router is not None:
+                from starlette.routing import Mount
+                htmx_path = f"/m/{module_id}"
+                if self._route_exists(htmx_path):
+                    raise RuntimeError(
+                        f"Route conflict: {htmx_path} is already mounted by another module"
+                    )
+                mount = Mount(htmx_path, app=router)
+                self.app.routes.append(mount)
+                mounted_routes.append(mount)
+
+            # 6. Mount API router (check for conflicts first)
+            if api_router is not None:
+                from starlette.routing import Mount
+                api_path = f"/api/v1/m/{module_id}"
+                if self._route_exists(api_path):
+                    raise RuntimeError(
+                        f"Route conflict: {api_path} is already mounted by another module"
+                    )
+                mount = Mount(api_path, app=api_router)
+                self.app.routes.append(mount)
+                mounted_routes.append(mount)
+
+            # 7. Events
+            self._try_register_events(module_id)
+            events_registered = True
+
+            # 8. Hooks
+            self._try_register_hooks(module_id)
+            hooks_registered = True
+
+            # 9. Slots
+            self._try_register_slots(module_id)
+            slots_registered = True
+
+            # 10. Services (populates SERVICE_REGISTRY)
+            self._try_load_services(module_id)
+
+            # 11. Middleware
+            middleware_instance = self._try_load_middleware(module_id, manifest)
+
+            # 12. Register module locales for i18n
+            locales_dir = module_path / "locales"
+            if locales_dir.exists():
+                register_module_locales(module_id, locales_dir)
+                locales_registered = True
+
+            # 13. Mount module static files at /static/m/{module_id}/
+            static_dir = module_path / "static" / module_id
+            if static_dir.exists():
+                from starlette.staticfiles import StaticFiles
+
+                self.app.mount(
+                    f"/static/m/{module_id}",
+                    StaticFiles(directory=str(static_dir)),
+                    name=f"static-{module_id}",
+                )
+                static_mounted = True
+
+            # 14. Bust OpenAPI cache
+            self.app.openapi_schema = None
+
+            # 15. Register
+            entry = self.registry.register(
+                module_id=module_id,
+                manifest=manifest,
+                router=router,
+                api_router=api_router,
+                middleware=middleware_instance,
+                path=module_path,
+            )
+
+            # 16. Add module middleware to the Starlette stack
+            if middleware_instance is not None:
+                await self.stack_manager.add_and_rebuild(middleware_instance)
+                middleware_added = True
+
+            logger.info(
+                "Loaded module %s v%s from %s",
+                module_id,
+                manifest.MODULE_VERSION,
+                module_path,
+            )
+            return entry
+
+        except Exception:
+            # --- Rollback all registered components ---
+            logger.error("Module %s load failed — rolling back partial registration", module_id)
+
+            # Remove mounted routes
+            for mount in mounted_routes:
+                try:
+                    self.app.routes.remove(mount)
+                except ValueError:
+                    pass
+
+            # Unregister events
+            if events_registered:
+                try:
+                    await self.bus.unsubscribe_module(module_id)
+                except Exception:
+                    pass
+
+            # Remove hooks
+            if hooks_registered:
+                try:
+                    self.hooks.remove_module_hooks(module_id)
+                except Exception:
+                    pass
+
+            # Remove slots
+            if slots_registered:
+                try:
+                    self.slots.unregister_module(module_id)
+                except Exception:
+                    pass
+
+            # Unregister services
+            from hotframe.apps.service_facade import unregister_module_services
+            try:
+                unregister_module_services(module_id)
+            except Exception:
+                pass
+
+            # Unregister locales
+            if locales_registered:
+                try:
+                    unregister_module_locales(module_id)
+                except Exception:
+                    pass
+
+            # Remove middleware from Starlette stack
+            if middleware_added and middleware_instance is not None:
+                try:
+                    await self.stack_manager.remove_and_rebuild(middleware_instance)
+                except Exception:
+                    pass
+
+            # Remove static mount
+            if static_mounted:
+                static_mount_path = f"/static/m/{module_id}"
+                self.app.routes[:] = [
+                    route for route in self.app.routes
+                    if getattr(route, "path", None) != static_mount_path
+                ]
+
+            # Purge sys.modules via ImportManager (exact, weakref-checked)
+            self._purge_module(module_id)
+
+            # Bust OpenAPI cache
+            self.app.openapi_schema = None
+
+            raise
+
+    # ------------------------------------------------------------------
+    # Unload
+    # ------------------------------------------------------------------
+
+    async def unload_module(self, module_id: str) -> None:
+        """
+        Unload a module from the running application.
+
+        Steps:
+            1. Remove routes matching ``/m/{module_id}`` and ``/api/v1/m/{module_id}``
+            2. ``bus.unsubscribe_module(module_id)``
+            3. ``hooks.remove_module_hooks(module_id)``
+            4. ``slots.unregister_module(module_id)``
+            5. Purge ``sys.modules`` entries for the module
+            6. Unregister from :class:`ModuleRegistry`
+            7. Bust OpenAPI cache
+        """
+        # 1. Remove routes
+        self._remove_routes(module_id)
+
+        # 2. Events
+        await self.bus.unsubscribe_module(module_id)
+
+        # 3. Hooks
+        self.hooks.remove_module_hooks(module_id)
+
+        # 4. Slots
+        self.slots.unregister_module(module_id)
+
+        # 5. Unregister module locales
+        unregister_module_locales(module_id)
+
+        # 6. Unmount module static files
+        static_mount_path = f"/static/m/{module_id}"
+        self.app.routes[:] = [
+            route
+            for route in self.app.routes
+            if getattr(route, "path", None) != static_mount_path
+        ]
+
+        # 7. Unregister services
+        from hotframe.apps.service_facade import unregister_module_services
+        unregister_module_services(module_id)
+
+        # 8. Purge sys.modules via ImportManager (exact + weakref check
+        # flags zombie classes that were kept alive by caches elsewhere).
+        report = self._purge_module(module_id)
+        if report is not None and report.zombie_classes:
+            logger.warning(
+                "Module %s unloaded with %d zombie class(es): %s",
+                module_id,
+                len(report.zombie_classes),
+                ", ".join(report.zombie_classes),
+            )
+
+        # 8b. Remove module middleware from Starlette stack
+        entry = self.registry.get(module_id)
+        if entry is not None and entry.middleware is not None:
+            await self.stack_manager.remove_and_rebuild(entry.middleware)
+
+        # 9. Unregister
+        self.registry.unregister(module_id)
+
+        # 10. Bust OpenAPI cache
+        self.app.openapi_schema = None
+
+        logger.info("Unloaded module %s", module_id)
+
+    # ------------------------------------------------------------------
+    # Reload
+    # ------------------------------------------------------------------
+
+    async def reload_module(
+        self,
+        module_id: str,
+        module_path: Path,
+        manifest: ModuleManifest,
+    ) -> RegisteredModule:
+        """Unload + load. Designed for dev hot-reload."""
+        await self.unload_module(module_id)
+        return await self.load_module(module_id, module_path, manifest)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _try_import_router(
+        module_id: str,
+        submodule: str,
+        attr: str,
+    ) -> APIRouter | None:
+        """Try to import ``{module_id}.{submodule}`` and return ``getattr(mod, attr)``."""
+        fqn = f"{module_id}.{submodule}"
+        try:
+            mod = importlib.import_module(fqn)
+            router = getattr(mod, attr, None)
+            if router is not None and isinstance(router, APIRouter):
+                return router
+            # Fallback: look for a plain ``router`` attribute
+            if attr != "router":
+                router = getattr(mod, "router", None)
+                if router is not None and isinstance(router, APIRouter):
+                    return router
+            return None
+        except ModuleNotFoundError as e:
+            logger.warning("Module %s not found: %s", fqn, e)
+            return None
+        except Exception:
+            logger.exception("Error importing %s", fqn)
+            return None
+
+    def _try_register_events(self, module_id: str) -> None:
+        """Import ``{module_id}.events`` and call ``register_events(bus, module_id)``."""
+        fqn = f"{module_id}.events"
+        try:
+            mod = importlib.import_module(fqn)
+            register_fn = getattr(mod, "register_events", None)
+            if register_fn is not None:
+                register_fn(self.bus, module_id)
+        except ModuleNotFoundError:
+            pass
+        except Exception:
+            logger.exception("Error registering events for %s", module_id)
+
+    def _try_register_hooks(self, module_id: str) -> None:
+        """Import ``{module_id}.hooks`` and call ``register_hooks(hooks, module_id)``."""
+        fqn = f"{module_id}.hooks"
+        try:
+            mod = importlib.import_module(fqn)
+            register_fn = getattr(mod, "register_hooks", None)
+            if register_fn is not None:
+                register_fn(self.hooks, module_id)
+        except ModuleNotFoundError:
+            pass
+        except Exception:
+            logger.exception("Error registering hooks for %s", module_id)
+
+    def _try_register_slots(self, module_id: str) -> None:
+        """Import ``{module_id}.slots`` and call ``register_slots(slots, module_id)``."""
+        fqn = f"{module_id}.slots"
+        try:
+            mod = importlib.import_module(fqn)
+            register_fn = getattr(mod, "register_slots", None)
+            if register_fn is not None:
+                register_fn(self.slots, module_id)
+        except ModuleNotFoundError:
+            pass
+        except Exception:
+            logger.exception("Error registering slots for %s", module_id)
+
+    @staticmethod
+    def _try_load_services(module_id: str) -> bool:
+        """Import ``{module_id}.services`` and register ModuleService subclasses.
+
+        Returns True if at least one service was registered.
+        """
+        from hotframe.apps.service_facade import register_services
+        try:
+            count = register_services(module_id)
+            return count > 0
+        except Exception:
+            logger.exception("Error loading services for %s", module_id)
+            return False
+
+    @staticmethod
+    def _try_load_middleware(
+        module_id: str,
+        manifest: ModuleManifest,
+    ) -> Any | None:
+        """
+        Load the middleware class specified in ``manifest.MIDDLEWARE``.
+
+        The string format is ``{module_id}.middleware.ClassName``.
+        """
+        if not manifest.MIDDLEWARE:
+            return None
+        try:
+            parts = manifest.MIDDLEWARE.rsplit(".", 1)
+            if len(parts) != 2:
+                logger.warning(
+                    "Invalid MIDDLEWARE format for %s: %s (expected 'module.ClassName')",
+                    module_id,
+                    manifest.MIDDLEWARE,
+                )
+                return None
+            mod_path, cls_name = parts
+            mod = importlib.import_module(mod_path)
+            cls = getattr(mod, cls_name, None)
+            if cls is None:
+                logger.warning(
+                    "Middleware class %s not found in %s",
+                    cls_name,
+                    mod_path,
+                )
+                return None
+            return cls
+        except Exception:
+            logger.exception("Error loading middleware for %s", module_id)
+            return None
+
+    def _route_exists(self, path: str) -> bool:
+        """Check if a route path is already mounted."""
+        return any(
+            getattr(route, "path", None) == path
+            for route in self.app.routes
+        )
+
+    def _remove_routes(self, module_id: str) -> None:
+        """Remove all routes matching the module prefixes from the app."""
+        htmx_prefix = f"/m/{module_id}"
+        api_prefix = f"/api/v1/m/{module_id}"
+
+        self.app.routes[:] = [
+            route
+            for route in self.app.routes
+            if not _route_matches_prefix(route, htmx_prefix)
+            and not _route_matches_prefix(route, api_prefix)
+        ]
+
+    def _register_exported_models(self, module_id: str) -> None:
+        """Register SQLAlchemy model classes from the module for zombie detection."""
+        fqn = f"{module_id}.models"
+        mod = sys.modules.get(fqn)
+        if mod is None:
+            return
+        from hotframe.models.base import Base
+        for attr_name in dir(mod):
+            obj = getattr(mod, attr_name, None)
+            if isinstance(obj, type) and issubclass(obj, Base) and obj is not Base:
+                self.import_manager.register_exported_class(module_id, obj)
+
+    def _purge_module(self, module_id: str) -> PurgeReport | None:
+        """Purge the module via ``ImportManager`` and report zombies.
+
+        Returns ``None`` if the module was not tracked (legacy path, or
+        load failed before import). Falls back to prefix-based purge to
+        guarantee cleanup.
+        """
+        if self.import_manager.get_bundle(module_id) is not None:
+            report = self.import_manager.purge(module_id)
+            logger.debug(
+                "Purged %d sys.modules entries for %s (zombies=%d)",
+                report.purged_count,
+                module_id,
+                len(report.zombie_classes),
+            )
+            return report
+
+        # Fallback: untracked module (e.g. imported outside ImportManager).
+        prefix = f"{module_id}."
+        keys_to_remove = [
+            key
+            for key in sys.modules
+            if key == module_id or key.startswith(prefix)
+        ]
+        for key in keys_to_remove:
+            del sys.modules[key]
+        if keys_to_remove:
+            logger.debug(
+                "Fallback-purged %d sys.modules entries for %s (untracked)",
+                len(keys_to_remove),
+                module_id,
+            )
+        return None
+
+
+# ------------------------------------------------------------------
+# Utilities
+# ------------------------------------------------------------------
+
+def _import_fresh(module_id: str) -> Any:
+    """Import (or re-import) a module, ensuring fresh code is loaded."""
+    if module_id in sys.modules:
+        return importlib.reload(sys.modules[module_id])
+    return importlib.import_module(module_id)
+
+
+def _route_matches_prefix(route: Any, prefix: str) -> bool:
+    """Check if a route object has a path starting with the given prefix."""
+    route_path = getattr(route, "path", None)
+    if route_path is not None:
+        return route_path == prefix or route_path.startswith(prefix + "/")
+    return False
