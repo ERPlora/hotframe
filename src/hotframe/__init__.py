@@ -75,6 +75,9 @@ _LAZY_IMPORTS: dict[str, str] = {
     # Config
     "get_engine": "hotframe.config.database",
     "get_session_factory": "hotframe.config.database",
+    # Storage
+    "MediaStorage": "hotframe.storage.media",
+    "get_media_storage": "hotframe.storage.media",
 }
 
 

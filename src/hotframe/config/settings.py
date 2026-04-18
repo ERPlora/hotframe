@@ -77,6 +77,12 @@ class HotframeSettings(BaseSettings):
     S3_MODULES_BUCKET: str = ""
     AWS_REGION: str = "us-east-1"
 
+    # --- Media storage ---
+    MEDIA_ROOT: Path = Path("./media")
+    MEDIA_STORAGE: str = "local"  # "local" or "s3"
+    MEDIA_S3_BUCKET: str = ""
+    MEDIA_URL: str = "/media/"  # URL prefix for serving media files
+
     # --- Deployment ---
     DEPLOYMENT_MODE: Literal["local", "web"] = "local"
 

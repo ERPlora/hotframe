@@ -211,6 +211,7 @@ class AppConfig:
     name: str = ""
     verbose_name: str = ""
     mount_prefix: str = ""           # if empty, defaults to f"/{name}/"
+    media_path: str = ""             # Media subdirectory name. If empty, uses app name.
     version: str = "0.1.0"
     depends: list[str] = []
     permissions: list[tuple[str, str]] = []
@@ -285,6 +286,7 @@ class ModuleConfig(AppConfig):
     is_system: bool = False
     has_views: bool = True
     has_api: bool = True
+    media_path: str = ""             # Media subdirectory name. If empty, uses module name.
     s3_key: str | None = None
     sha256: str | None = None
 

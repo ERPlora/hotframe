@@ -163,6 +163,14 @@ def create_app(settings: HotframeSettings | None = None) -> FastAPI:
     async def health():
         return {"status": "ok"}
 
+    # --- Media files (local dev only) ---
+    if settings.MEDIA_STORAGE == "local" and settings.DEBUG:
+        from pathlib import Path as _Path
+        media_root = _Path(settings.MEDIA_ROOT).resolve()
+        media_root.mkdir(parents=True, exist_ok=True)
+        from fastapi.staticfiles import StaticFiles
+        app.mount(settings.MEDIA_URL, StaticFiles(directory=str(media_root)), name="media")
+
     # --- Error handlers ---
     login_url = settings.AUTH_LOGIN_URL
 

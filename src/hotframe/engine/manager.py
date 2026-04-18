@@ -170,6 +170,119 @@ class ModuleManager:
         )
 
     # ------------------------------------------------------------------
+    # Update
+    # ------------------------------------------------------------------
+
+    async def update(self, source: str) -> Result:
+        """Update a module to a new version.
+
+        Downloads/extracts the new version, backs up the old one,
+        replaces files, runs migrations, reloads code.
+        Media/data files are NOT affected.
+
+        The module must already be installed (any status).
+        """
+        # Step 1: Resolve source to get new files
+        resolve_result = await self._resolve_source(source)
+        if not resolve_result.ok:
+            return resolve_result
+
+        name = resolve_result.module
+        mod_dir = self._modules_dir / name
+
+        if name not in self._state:
+            # Not tracked — maybe it's a fresh install instead
+            return await self.install(source)
+
+        old_state = self._state[name]
+        old_version = old_state.version
+        was_active = old_state.status == "active"
+
+        # Step 2: Backup current module
+        backup_dir = self._modules_dir / f".{name}_backup"
+        try:
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir)
+            shutil.copytree(mod_dir, backup_dir)
+        except Exception as exc:
+            return Result(ok=False, message=f"Backup failed: {exc}", module=name)
+
+        # Step 3: If source was zip/URL, files are already extracted to mod_dir
+        # by _resolve_source. If source was just a name, mod_dir already has
+        # the new files (e.g. updated via git pull). Either way, mod_dir is current.
+
+        # Step 4: Reimport models (may have new columns/tables)
+        try:
+            # Remove old table registrations from SQLAlchemy metadata
+            # so the reimport doesn't clash with "already defined" errors
+            from hotframe.models.base import Base
+
+            tables_to_remove = [
+                t_name for t_name in Base.metadata.tables
+                if t_name.startswith(f"{name}_") or t_name == name
+            ]
+            for t_name in tables_to_remove:
+                Base.metadata.remove(Base.metadata.tables[t_name])
+
+            # Force reimport by removing from sys.modules
+            import sys
+
+            to_remove = [k for k in sys.modules if k.startswith(f"modules.{name}")]
+            for k in to_remove:
+                del sys.modules[k]
+
+            importlib.import_module(f"modules.{name}.models")
+        except ImportError:
+            pass  # No models is fine
+        except Exception as exc:
+            # Rollback
+            shutil.rmtree(mod_dir)
+            shutil.copytree(backup_dir, mod_dir)
+            shutil.rmtree(backup_dir)
+            return Result(ok=False, message=f"Model import failed: {exc}", module=name)
+
+        # Step 5: Run migrations
+        try:
+            from hotframe.config.database import get_engine
+            from hotframe.models.base import Base
+
+            engine = get_engine()
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+        except Exception as exc:
+            # Rollback
+            shutil.rmtree(mod_dir)
+            shutil.copytree(backup_dir, mod_dir)
+            shutil.rmtree(backup_dir)
+            return Result(ok=False, message=f"Migration failed: {exc}", module=name)
+
+        # Step 6: Remount routes if was active
+        mounted = []
+        if was_active and self.app is not None:
+            mounted = await self._mount_routes(name)
+
+        # Step 7: Update state
+        info = self._read_module_info(name, mod_dir)
+        info.status = old_state.status  # preserve active/disabled status
+        self._state[name] = info
+        new_version = info.version
+
+        # Step 8: Clean up backup
+        shutil.rmtree(backup_dir, ignore_errors=True)
+
+        logger.info("Updated module %s: %s → %s", name, old_version, new_version)
+        return Result(
+            ok=True,
+            message=f"Module '{name}' updated: {old_version} → {new_version}",
+            module=name,
+            details={
+                "old_version": old_version,
+                "new_version": new_version,
+                "mounted_routes": mounted,
+            },
+        )
+
+    # ------------------------------------------------------------------
     # Activate
     # ------------------------------------------------------------------
 

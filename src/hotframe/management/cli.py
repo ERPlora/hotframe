@@ -545,6 +545,26 @@ def modules_install(name: str) -> None:
     asyncio.run(_install())
 
 
+@modules_app.command("update")
+def modules_update(source: str) -> None:
+    """Update a module to a new version."""
+    import asyncio
+
+    async def _update():
+        from hotframe.engine.manager import ModuleManager
+
+        manager = ModuleManager()
+        result = await manager.update(source)
+
+        if result.ok:
+            typer.echo(f"OK: {result.message}")
+        else:
+            typer.echo(f"Error: {result.message}", err=True)
+            raise typer.Exit(1)
+
+    asyncio.run(_update())
+
+
 @modules_app.command("activate")
 def modules_activate(name: str) -> None:
     """Activate a disabled module."""
@@ -687,6 +707,7 @@ def makemigrations(message: str = "auto") -> None:
 # ---------------------------------------------------------------------------
 # version
 # ---------------------------------------------------------------------------
+
 
 @app.command()
 def version() -> None:
