@@ -297,7 +297,7 @@ flowchart TB
     REPOSITORY["repository/<br/>BaseRepository"]
     MODELS["models/<br/>Model, Manager, QuerySet"]
     ORM["orm/<br/>session, @atomic, LISTEN/NOTIFY"]
-    DB["db/<br/>engine, HubMixin, types"]
+    DB["db/<br/>protocols, engine, HubMixin, types"]
     UTILS["utils/<br/>cpu_bound, importlib_ext, hashing"]
 
     TESTING["testing/<br/>fixtures pytest<br/>(puede importar todo)"]
@@ -735,6 +735,8 @@ from hotframe import (
     TimestampMixin, SoftDeleteMixin, TenantMixin,
     # Repository
     BaseRepository,
+    # DB Protocols
+    ISession, IQueryBuilder, IRepository,
     # Signals
     Signal, receiver,
     pre_save, post_save, pre_delete, post_delete,
@@ -853,6 +855,64 @@ urlpatterns = [
 - Componentes JS reactivos (delegado a Alpine.js).
 - Routing cliente (delegado a HTMX `hx-push-url`).
 - State management cliente (delegado a Alpine `x-data` + servidor como fuente de verdad).
+
+---
+
+## Capa de abstracción de persistencia (DB Protocols)
+
+`hotframe` desacopla su API pública de SQLAlchemy mediante `Protocol` classes (tipado estructural). El código de módulos y apps depende de interfaces abstractas, no de `AsyncSession` directamente.
+
+### Protocolos disponibles
+
+| Protocolo | Qué abstrae | Implementación por defecto |
+|---|---|---|
+| `ISession` | Sesión async de DB (execute, add, flush, commit, rollback, delete, transacciones) | `AsyncSession` (SQLAlchemy) |
+| `IExecuteResult` | Resultado de `session.execute()` | `CursorResult` (SQLAlchemy) |
+| `IScalarResult` | Resultado de `result.scalars()` | `ScalarResult` (SQLAlchemy) |
+| `IQueryBuilder[T]` | Query builder chainable async | `HubQuery` |
+| `IRepository[T]` | Repositorio CRUD tipado | `BaseRepository` |
+
+### Dónde viven
+
+```
+hotframe/db/protocols.py     ← definición de los 5 protocolos
+hotframe/db/__init__.py      ← re-exports
+hotframe/__init__.py          ← lazy imports (from hotframe import ISession)
+```
+
+### Ficheros que usan `ISession` (en vez de `AsyncSession`)
+
+| Capa | Ficheros |
+|---|---|
+| API pública | `auth/current_user.py` (DbSession), `apps/service_facade.py` (ModuleService) |
+| Query/Repo | `models/queryset.py` (HubQuery), `repository/base.py` (BaseRepository) |
+| Transacciones | `orm/transactions.py` (atomic, on_commit) |
+| Singletons | `db/singletons.py` (SingletonMixin) |
+| Engine | `engine/state.py`, `engine/dependency.py`, `engine/lifecycle.py`, `engine/module_runtime.py` |
+| Discovery | `discovery/bootstrap.py` |
+
+### Qué NO se abstrae
+
+- **Modelos** (`DeclarativeBase`, `mapped_column`) — son el schema, inherentemente ORM
+- **Migraciones** (Alembic) — inherentemente SQL
+- **ORM events** (`orm/events.py`) — hooks de SQLAlchemy Mapper
+- **PgNotifyBridge** (`orm/listeners.py`) — PostgreSQL puro
+- **Custom types** (`EncryptedString`, `EncryptedText`) — SQLAlchemy TypeDecorator
+- **Testing infra** (`testing/__init__.py`) — intencionalmente SQLAlchemy
+
+### Ejemplo de uso en un módulo
+
+```python
+from hotframe import ModuleService, ISession
+
+class OrderService(ModuleService):
+    # self.db: ISession (no AsyncSession)
+    # self.q(Model) → IQueryBuilder[Model]
+    # self.repo(Model) → IRepository[Model]
+
+    async def get_pending(self):
+        return await self.q(Order).filter(Order.status == "pending").all()
+```
 
 ---
 
