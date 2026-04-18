@@ -1499,7 +1499,7 @@ config = context.config
 
 
 def run_migrations_offline():
-    url = config.get_main_option("sqlalchemy.url")
+    url = _to_sync_url(config.get_main_option("sqlalchemy.url"))
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -1511,11 +1511,16 @@ def run_migrations_offline():
         context.run_migrations()
 
 
+def _to_sync_url(url):
+    """Convert async DB URL to sync for Alembic."""
+    return url.replace("+asyncpg", "").replace("+aiosqlite", "")
+
+
 def run_migrations_online():
     # Check if a connection was passed (from ModuleMigrationRunner)
     connectable = config.attributes.get("connection")
     if connectable is None:
-        url = config.get_main_option("sqlalchemy.url")
+        url = _to_sync_url(config.get_main_option("sqlalchemy.url"))
         connectable = create_engine(url, poolclass=pool.NullPool)
 
     if hasattr(connectable, "connect"):
