@@ -18,7 +18,8 @@ _LAZY_IMPORTS: dict[str, str] = {
     "ModuleConfig": "hotframe.apps.config",
     # Models
     "Base": "hotframe.models.base",
-    "HubBaseModel": "hotframe.models.base",
+    "Model": "hotframe.models.base",
+    "HubBaseModel": "hotframe.models.base",  # backward compat alias for Model
     "TimeStampedModel": "hotframe.models.base",
     "ActiveModel": "hotframe.models.base",
     "HubMixin": "hotframe.models.mixins",

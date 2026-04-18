@@ -1,8 +1,19 @@
 """
 SQLAlchemy declarative base and abstract model classes.
 
-Provides Base, HubBaseModel, TimeStampedModel, and ActiveModel.
+Provides Base, Model, TimeStampedModel, and ActiveModel.
 All use SQLAlchemy 2.0 mapped_column style with UUID primary keys.
+
+Projects extend ``Model`` in their ``apps/shared/models.py`` to add
+project-specific fields (e.g. tenant_id, audit fields, soft delete).
+
+Usage::
+
+    from hotframe import Model
+
+    class Product(Model):
+        __tablename__ = "products"
+        name: Mapped[str] = mapped_column(String(200))
 """
 
 from __future__ import annotations
@@ -20,12 +31,20 @@ class Base(DeclarativeBase):
     pass
 
 
-class HubBaseModel(Base):
-    """
-    Abstract base for hub-scoped models.
+class Model(Base):
+    """Generic abstract base model with UUID primary key and timestamps.
 
-    Includes: UUID PK, hub_id FK, timestamps, audit fields, soft delete.
-    Most module models should inherit from this.
+    This is the recommended base for all models. Projects that need
+    additional fields (tenant_id, audit, soft-delete) should create
+    their own base in ``apps/shared/models.py`` extending this class.
+
+    Usage::
+
+        from hotframe import Model
+
+        class Article(Model):
+            __tablename__ = "articles"
+            title: Mapped[str] = mapped_column(String(200))
     """
 
     __abstract__ = True
@@ -35,13 +54,7 @@ class HubBaseModel(Base):
         primary_key=True,
         default=uuid.uuid4,
     )
-    hub_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid,
-        nullable=False,
-        index=True,
-    )
 
-    # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -54,27 +67,9 @@ class HubBaseModel(Base):
         onupdate=func.now(),
     )
 
-    # Audit
-    created_by: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid,
-        nullable=True,
-    )
-    updated_by: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid,
-        nullable=True,
-    )
 
-    # Soft delete
-    is_deleted: Mapped[bool] = mapped_column(
-        Boolean,
-        default=False,
-        server_default="false",
-        index=True,
-    )
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
+# Backward compatibility alias
+HubBaseModel = Model
 
 
 class TimeStampedModel(Base):
