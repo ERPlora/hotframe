@@ -48,12 +48,8 @@ class HotframeSettings(BaseSettings):
     )
 
     # --- Apps ---
-    # List of apps to load. Empty = auto-discover all from apps/.
-    # If set, only these apps load, in this order.
-    INSTALLED_APPS: list[str] = []
-
     # Extra routers to mount (dotted paths to Router instances).
-    # Apps routers are auto-discovered; use this for standalone routers.
+    # App routers are auto-discovered from apps/; use this for standalone routers.
     EXTRA_ROUTERS: list[str] = []
 
     # --- Database ---

@@ -239,16 +239,13 @@ def _auto_discover_apps(app: FastAPI) -> None:
     if not apps_dir.exists():
         return
 
-    # Determine which apps to load
-    if settings.INSTALLED_APPS:
-        app_names = settings.INSTALLED_APPS
-    else:
-        app_names = sorted(
-            d.name
-            for d in apps_dir.iterdir()
-            if d.is_dir()
-            and not d.name.startswith((".", "_"))
-            and (d / "__init__.py").exists()
+    # Auto-discover all apps
+    app_names = sorted(
+        d.name
+        for d in apps_dir.iterdir()
+        if d.is_dir()
+        and not d.name.startswith((".", "_"))
+        and (d / "__init__.py").exists()
         )
 
     mounted = []
