@@ -1447,6 +1447,13 @@ def _generate_env_py(name: str) -> str:
     """Generate a minimal env.py for Alembic migrations."""
     return f'''\
 """Alembic migration environment for {name}."""
+import sys
+from pathlib import Path
+
+# Ensure project root is in sys.path so app/module imports work
+# env.py lives at apps/{name}/migrations/env.py → parents[3] = project root
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
 from alembic import context
 from sqlalchemy import create_engine, pool
 
