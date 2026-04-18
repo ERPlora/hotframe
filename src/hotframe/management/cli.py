@@ -80,6 +80,94 @@ def startproject(name: str) -> None:
 
             APP_TITLE: str = "{name.replace("_", " ").title()}"
 
+            # -----------------------------------------------------------------
+            # Auth (uncomment and configure when you add user authentication)
+            # -----------------------------------------------------------------
+            # AUTH_USER_MODEL: str = "apps.accounts.models.User"
+            # AUTH_LOGIN_URL: str = "/login"
+            # AUTH_UNAUTHORIZED_URL: str = "/unauthorized"
+            # PERMISSION_RESOLVER: str = ""
+
+            # -----------------------------------------------------------------
+            # CORS (uncomment to enable cross-origin requests)
+            # -----------------------------------------------------------------
+            # CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+            # CORS_METHODS: list[str] = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+            # CORS_HEADERS: list[str] = ["*"]
+            # CORS_CREDENTIALS: bool = True
+
+            # -----------------------------------------------------------------
+            # CSRF (override to add exempt routes)
+            # -----------------------------------------------------------------
+            # CSRF_EXEMPT_PREFIXES: list[str] = ["/api/", "/health", "/static/"]
+
+            # -----------------------------------------------------------------
+            # Rate limiting
+            # -----------------------------------------------------------------
+            # RATE_LIMIT_API: int = 120          # requests/min for /api/
+            # RATE_LIMIT_HTMX: int = 300         # requests/min for /m/
+            # RATE_LIMIT_AUTH: int = 60           # requests/min for auth routes
+            # RATE_LIMIT_AUTH_PREFIXES: list[str] = []
+
+            # -----------------------------------------------------------------
+            # Session
+            # -----------------------------------------------------------------
+            # SESSION_COOKIE_NAME: str = "session"
+            # SESSION_MAX_AGE: int = 2592000     # 30 days
+
+            # -----------------------------------------------------------------
+            # Static & Media
+            # -----------------------------------------------------------------
+            # STATIC_ROOT: str = "./static"
+            # STATIC_URL: str = "/static/"
+            # MEDIA_ROOT: str = "./media"
+            # MEDIA_URL: str = "/media/"
+            # MEDIA_STORAGE: str = "local"       # "local" or "s3"
+            # MEDIA_S3_BUCKET: str = ""
+
+            # -----------------------------------------------------------------
+            # CSP (Content Security Policy)
+            # -----------------------------------------------------------------
+            # CSP_ENFORCE: bool = False
+            # CSP_EXTRA_SCRIPT_SRC: list[str] = []
+            # CSP_EXTRA_STYLE_SRC: list[str] = []
+            # CSP_EXTRA_CONNECT_SRC: list[str] = []
+
+            # -----------------------------------------------------------------
+            # Modules
+            # -----------------------------------------------------------------
+            # KERNEL_MODULE_NAMES: list[str] = []
+            # MODULE_MARKETPLACE_URL: str = ""
+            # MODULE_STATE_MODEL: str = ""
+
+            # -----------------------------------------------------------------
+            # Extra routers (dotted paths, for routers outside apps/)
+            # -----------------------------------------------------------------
+            # EXTRA_ROUTERS: list[str] = []
+
+            # -----------------------------------------------------------------
+            # Template context hook (async callable: request -> dict)
+            # -----------------------------------------------------------------
+            # GLOBAL_CONTEXT_HOOK: str = ""
+
+            # -----------------------------------------------------------------
+            # Middleware (override to add/remove/reorder)
+            # -----------------------------------------------------------------
+            # MIDDLEWARE: list[str] = [
+            #     "hotframe.middleware.timeout.TimeoutMiddleware",
+            #     "hotframe.middleware.error_pages.ErrorPageMiddleware",
+            #     "hotframe.middleware.body_limit.BodyLimitMiddleware",
+            #     "hotframe.middleware.request_id.RequestIdMiddleware",
+            #     "hotframe.middleware.rate_limit.APIRateLimitMiddleware",
+            #     "hotframe.middleware.module_middleware.ModuleMiddlewareManager",
+            #     "hotframe.auth.csrf.CSRFMiddleware",
+            #     "hotframe.middleware.htmx_messages.HtmxMessagesMiddleware",
+            #     "hotframe.middleware.htmx.HtmxMiddleware",
+            #     "hotframe.middleware.language.LanguageMiddleware",
+            #     "hotframe.middleware.csp.CSPMiddleware",
+            #     "hotframe.middleware.session.SessionMiddleware",
+            # ]
+
 
         settings = Settings()
     '''))
