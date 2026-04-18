@@ -353,6 +353,7 @@ def startproject(name: str) -> None:
             <script src="https://unpkg.com/idiomorph@0.4.0/dist/idiomorph-ext.min.js" nonce="{{{{ csp_nonce }}}}"></script>
             <script src="https://unpkg.com/htmx-ext-preload@2.1.0/preload.js" nonce="{{{{ csp_nonce }}}}"></script>
             <script src="https://unpkg.com/htmx-ext-loading-states@2.0.1/loading-states.js" nonce="{{{{ csp_nonce }}}}"></script>
+            <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js" nonce="{{{{ csp_nonce }}}}"></script>
 
             {{# ================================================================== #}}
             {{# Alpine.js plugins (BEFORE Alpine core, all with defer)            #}}
@@ -432,7 +433,7 @@ def startproject(name: str) -> None:
 
             {{%- block head_extra %}}{{%- endblock %}}
         </head>
-        <body hx-boost="true" hx-ext="morph,preload,loading-states" hx-headers='{{"X-CSRF-Token": "{{{{ csrf_token }}}}"}}' {{%- block body_attrs %}}{{%- endblock %}}>
+        <body hx-boost="true" hx-ext="morph,preload,loading-states,sse" hx-headers='{{"X-CSRF-Token": "{{{{ csrf_token }}}}"}}' {{%- block body_attrs %}}{{%- endblock %}}>
 
             {{# Fixed top progress bar #}}
             <div id="htmx-indicator"></div>
