@@ -11,11 +11,13 @@ Usage:
 
 from __future__ import annotations
 
-from typing import Self
+from typing import TYPE_CHECKING, Self
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from hotframe.db.protocols import ISession
 
 
 class SingletonMixin:
@@ -27,7 +29,7 @@ class SingletonMixin:
     """
 
     @classmethod
-    async def get_config(cls, session: AsyncSession, hub_id: UUID) -> Self:
+    async def get_config(cls, session: ISession, hub_id: UUID) -> Self:
         """
         Get or create the singleton instance for this hub_id.
 

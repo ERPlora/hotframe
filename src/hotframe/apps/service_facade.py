@@ -20,7 +20,7 @@ from hotframe.models.queryset import HubQuery
 from hotframe.repository.base import BaseRepository, serialize, serialize_list
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from hotframe.db.protocols import IQueryBuilder, IRepository, ISession
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +49,11 @@ class ModuleService:
 
     module_id: str = ""
 
-    def __init__(self, db: AsyncSession, hub_id: UUID) -> None:
+    def __init__(self, db: ISession, hub_id: UUID) -> None:
         self.db = db
         self.hub_id = hub_id
 
-    def q(self, model: type) -> HubQuery:
+    def q(self, model: type) -> IQueryBuilder:
         return HubQuery(model, self.db, self.hub_id)
 
     def repo(
@@ -62,7 +62,7 @@ class ModuleService:
         *,
         search_fields: list[str] | None = None,
         default_order: str = "created_at",
-    ) -> BaseRepository:
+    ) -> IRepository:
         return BaseRepository(
             model,
             self.db,

@@ -11,15 +11,16 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
+if TYPE_CHECKING:
+    from hotframe.db.protocols import ISession
 
 logger = logging.getLogger(__name__)
 
 
 async def boot_kernel_modules(
-    session: AsyncSession,
+    session: ISession,
     loader: Any,
     registry: Any,
     *,
@@ -79,7 +80,7 @@ async def boot_kernel_modules(
 
 
 async def _boot_single_kernel_module(
-    session: AsyncSession,
+    session: ISession,
     name: str,
     module_dir: Path,
     loader: Any,

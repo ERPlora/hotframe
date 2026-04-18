@@ -28,6 +28,12 @@ _LAZY_IMPORTS: dict[str, str] = {
     "HubQuery": "hotframe.models.queryset",
     # Repository
     "BaseRepository": "hotframe.repository.base",
+    # DB Protocols
+    "ISession": "hotframe.db.protocols",
+    "IQueryBuilder": "hotframe.db.protocols",
+    "IRepository": "hotframe.db.protocols",
+    "IExecuteResult": "hotframe.db.protocols",
+    "IScalarResult": "hotframe.db.protocols",
     # Signals
     "AsyncEventBus": "hotframe.signals.dispatcher",
     "HookRegistry": "hotframe.signals.hooks",

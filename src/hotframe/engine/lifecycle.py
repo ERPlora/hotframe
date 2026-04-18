@@ -18,9 +18,11 @@ from __future__ import annotations
 import importlib
 import inspect
 import logging
+from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
+if TYPE_CHECKING:
+    from hotframe.db.protocols import ISession
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +50,7 @@ class ModuleLifecycleManager:
         self,
         module_id: str,
         hook_name: str,
-        session: AsyncSession,
+        session: ISession,
         hub_id: UUID,
         **kwargs,
     ) -> None:

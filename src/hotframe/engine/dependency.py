@@ -14,12 +14,12 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from hotframe.apps.config import ModuleManifest
 from hotframe.engine.state import _get_module_model
 
 if TYPE_CHECKING:
+    from hotframe.db.protocols import ISession
     from hotframe.engine.module_runtime import ModuleRuntime
 
 logger = logging.getLogger(__name__)
@@ -88,7 +88,7 @@ class DependencyManager:
 
     async def check_install_deps(
         self,
-        session: AsyncSession,
+        session: ISession,
         manifest: ModuleManifest,
         **filters,
     ) -> DependencyCheckResult:
@@ -115,7 +115,7 @@ class DependencyManager:
 
     async def check_can_deactivate(
         self,
-        session: AsyncSession,
+        session: ISession,
         module_id: str,
         **filters,
     ) -> DeactivateCheckResult:
@@ -134,7 +134,7 @@ class DependencyManager:
 
     async def check_can_uninstall(
         self,
-        session: AsyncSession,
+        session: ISession,
         module_id: str,
         **filters,
     ) -> UninstallCheckResult:
@@ -215,7 +215,7 @@ class DependencyManager:
 
     async def deactivate_cascade(
         self,
-        session: AsyncSession,
+        session: ISession,
         module_id: str,
         runtime: ModuleRuntime,
         **filters,
@@ -229,7 +229,7 @@ class DependencyManager:
 
     async def _build_cascade_order(
         self,
-        session: AsyncSession,
+        session: ISession,
         module_id: str,
         **filters,
     ) -> list[str]:
@@ -253,7 +253,7 @@ class DependencyManager:
 
     async def _find_active_dependents(
         self,
-        session: AsyncSession,
+        session: ISession,
         module_id: str,
         **filters,
     ) -> list[str]:

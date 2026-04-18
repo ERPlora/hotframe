@@ -11,10 +11,12 @@ from __future__ import annotations
 import importlib
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from hotframe.db.protocols import ISession
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +47,7 @@ class ModuleStateDB:
     def _model(self) -> type:
         return _get_module_model()
 
-    async def get_active_modules(self, session: AsyncSession, **filters: Any) -> list:
+    async def get_active_modules(self, session: ISession, **filters: Any) -> list:
         Model = self._model()
         stmt = select(Model).where(Model.status == "active").order_by(Model.installed_at)
         for key, value in filters.items():
@@ -53,7 +55,7 @@ class ModuleStateDB:
         result = await session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_all_modules(self, session: AsyncSession, **filters: Any) -> list:
+    async def get_all_modules(self, session: ISession, **filters: Any) -> list:
         Model = self._model()
         stmt = select(Model).order_by(Model.installed_at)
         for key, value in filters.items():
@@ -61,7 +63,7 @@ class ModuleStateDB:
         result = await session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_module(self, session: AsyncSession, module_id: str, **filters: Any) -> Any | None:
+    async def get_module(self, session: ISession, module_id: str, **filters: Any) -> Any | None:
         Model = self._model()
         stmt = select(Model).where(Model.module_id == module_id)
         for key, value in filters.items():
@@ -71,7 +73,7 @@ class ModuleStateDB:
 
     async def create(
         self,
-        session: AsyncSession,
+        session: ISession,
         module_id: str,
         version: str,
         *,
@@ -104,7 +106,7 @@ class ModuleStateDB:
 
     async def activate(
         self,
-        session: AsyncSession,
+        session: ISession,
         module_id: str,
         manifest_dict: dict[str, Any],
         **filters: Any,
@@ -124,7 +126,7 @@ class ModuleStateDB:
         await session.execute(stmt)
         logger.info("Activated module %s", module_id)
 
-    async def deactivate(self, session: AsyncSession, module_id: str, **filters: Any) -> None:
+    async def deactivate(self, session: ISession, module_id: str, **filters: Any) -> None:
         Model = self._model()
         now = datetime.now(UTC)
         stmt = update(Model).where(Model.module_id == module_id)
@@ -136,7 +138,7 @@ class ModuleStateDB:
 
     async def set_status(
         self,
-        session: AsyncSession,
+        session: ISession,
         module_id: str,
         status: str,
         error: str | None = None,
@@ -160,7 +162,7 @@ class ModuleStateDB:
 
     async def set_error(
         self,
-        session: AsyncSession,
+        session: ISession,
         module_id: str,
         error_message: str,
         **filters: Any,
@@ -170,7 +172,7 @@ class ModuleStateDB:
 
     async def update_manifest(
         self,
-        session: AsyncSession,
+        session: ISession,
         module_id: str,
         manifest_dict: dict[str, Any],
         **filters: Any,
@@ -182,7 +184,7 @@ class ModuleStateDB:
         stmt = stmt.values(manifest=manifest_dict)
         await session.execute(stmt)
 
-    async def delete(self, session: AsyncSession, module_id: str, **filters: Any) -> None:
+    async def delete(self, session: ISession, module_id: str, **filters: Any) -> None:
         Model = self._model()
         stmt = delete(Model).where(Model.module_id == module_id)
         for key, value in filters.items():

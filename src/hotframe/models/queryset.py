@@ -12,11 +12,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
 from uuid import UUID
 
 from sqlalchemy import Select, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from hotframe.db.protocols import ISession
 
 
 class HubQuery[T]:
@@ -27,7 +29,7 @@ class HubQuery[T]:
     (if the model has is_deleted). Call .with_deleted() to include them.
     """
 
-    def __init__(self, model: type[T], session: AsyncSession, hub_id: UUID) -> None:
+    def __init__(self, model: type[T], session: ISession, hub_id: UUID) -> None:
         self._model = model
         self._session = session
         self._hub_id = hub_id

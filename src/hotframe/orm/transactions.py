@@ -11,16 +11,17 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
+if TYPE_CHECKING:
+    from hotframe.db.protocols import ISession
 
 # Storage for on_commit callbacks, keyed by session id
 _commit_callbacks: dict[int, list[Callable[[], Any | Awaitable[Any]]]] = {}
 
 
 @asynccontextmanager
-async def atomic(session: AsyncSession):
+async def atomic(session: ISession):
     """
     Async context manager for transactional blocks.
 
@@ -47,7 +48,7 @@ async def atomic(session: AsyncSession):
                 await result
 
 
-def on_commit(session: AsyncSession, callback: Callable[[], Any | Awaitable[Any]]) -> None:
+def on_commit(session: ISession, callback: Callable[[], Any | Awaitable[Any]]) -> None:
     """
     Register a callback to run after the outermost transaction commits.
 

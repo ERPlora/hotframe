@@ -16,11 +16,13 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import or_
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from hotframe.db.protocols import ISession
 
 from hotframe.models.queryset import HubQuery
 
@@ -36,7 +38,7 @@ class BaseRepository[T]:
     def __init__(
         self,
         model: type[T],
-        db: AsyncSession,
+        db: ISession,
         hub_id: UUID,
         *,
         search_fields: list[str] | None = None,

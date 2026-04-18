@@ -14,9 +14,9 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from hotframe.auth.auth import get_session_user_id
+from hotframe.db.protocols import ISession
 
 if TYPE_CHECKING:
     from hotframe.signals.dispatcher import AsyncEventBus
@@ -51,7 +51,7 @@ def _resolve_user_model() -> type | None:
 # ---------------------------------------------------------------------------
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+async def get_db() -> AsyncGenerator[ISession, None]:
     """
     FastAPI dependency that yields an async database session.
     """
@@ -65,7 +65,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
-DbSession = Annotated[AsyncSession, Depends(get_db)]
+DbSession = Annotated[ISession, Depends(get_db)]
 """Annotated type alias for injecting an async DB session."""
 
 

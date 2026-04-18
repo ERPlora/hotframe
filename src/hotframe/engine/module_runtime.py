@@ -25,8 +25,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from hotframe.apps.config import load_manifest, manifest_to_dict
 from hotframe.apps.registry import ModuleRegistry
 from hotframe.dev.autoreload import ModuleWatcher
@@ -42,6 +40,7 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
     from hotframe.config.settings import HotframeSettings
+    from hotframe.db.protocols import ISession
     from hotframe.signals.dispatcher import AsyncEventBus
     from hotframe.signals.hooks import HookRegistry
     from hotframe.templating.slots import SlotRegistry
@@ -157,7 +156,7 @@ class ModuleRuntime:
 
     async def boot(
         self,
-        session: AsyncSession,
+        session: ISession,
         hub_id: UUID,
     ) -> None:
         """
@@ -312,7 +311,7 @@ class ModuleRuntime:
 
     async def install(
         self,
-        session: AsyncSession,
+        session: ISession,
         hub_id: UUID | None,
         module_id: str,
         version: str | None = None,
@@ -652,7 +651,7 @@ class ModuleRuntime:
 
     async def _phase_validate(
         self,
-        session: AsyncSession,
+        session: ISession,
         hub_id: UUID,
         module_id: str,
         version: str,
@@ -738,7 +737,7 @@ class ModuleRuntime:
 
     async def _phase_check_deps(
         self,
-        session: AsyncSession,
+        session: ISession,
         hub_id: UUID,
         manifest: Any,
         auto_install_deps: bool,
@@ -775,7 +774,7 @@ class ModuleRuntime:
 
     async def _phase_migrate(
         self,
-        session: AsyncSession,
+        session: ISession,
         hub_id: UUID,
         module_id: str,
         version: str,
@@ -839,7 +838,7 @@ class ModuleRuntime:
 
     async def _phase_on_install(
         self,
-        session: AsyncSession,
+        session: ISession,
         hub_id: UUID,
         module_id: str,
     ) -> PhaseResult:
@@ -897,7 +896,7 @@ class ModuleRuntime:
 
     async def _phase_activate(
         self,
-        session: AsyncSession,
+        session: ISession,
         hub_id: UUID,
         module_id: str,
         manifest: Any,
@@ -932,7 +931,7 @@ class ModuleRuntime:
 
     async def activate(
         self,
-        session: AsyncSession,
+        session: ISession,
         hub_id: UUID,
         module_id: str,
     ) -> ActivateResult:
@@ -1048,7 +1047,7 @@ class ModuleRuntime:
 
     async def deactivate(
         self,
-        session: AsyncSession,
+        session: ISession,
         hub_id: UUID,
         module_id: str,
         cascade: bool = False,
@@ -1134,7 +1133,7 @@ class ModuleRuntime:
 
     async def uninstall(
         self,
-        session: AsyncSession,
+        session: ISession,
         hub_id: UUID,
         module_id: str,
     ) -> UninstallResult:
@@ -1236,7 +1235,7 @@ class ModuleRuntime:
 
     async def update(
         self,
-        session: AsyncSession,
+        session: ISession,
         hub_id: UUID,
         module_id: str,
         new_version: str,
@@ -1511,7 +1510,7 @@ class ModuleRuntime:
 
     async def _load_from_path(
         self,
-        session: AsyncSession,
+        session: ISession,
         hub_id: UUID,
         module_id: str,
         module_path: Path,
