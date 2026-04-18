@@ -148,8 +148,8 @@ def stat_card_helper(
         f'  <div class="stat-card__body">'
         f'    <div class="stat-card__value">{value}</div>'
         f'    <div class="stat-card__label">{label}</div>'
-        f'  </div>'
-        f'</div>'
+        f"  </div>"
+        f"</div>"
     )
 
 
@@ -202,9 +202,16 @@ def dateformat_filter(value: object, fmt: str = "d/m/Y H:i") -> str:
         return ""
 
     _PHP_TO_STRFTIME = {
-        "d": "%d", "j": "%-d", "m": "%m", "n": "%-m",
-        "Y": "%Y", "y": "%y", "H": "%H", "G": "%-H",
-        "i": "%M", "s": "%S",
+        "d": "%d",
+        "j": "%-d",
+        "m": "%m",
+        "n": "%-m",
+        "Y": "%Y",
+        "y": "%y",
+        "H": "%H",
+        "G": "%-H",
+        "i": "%M",
+        "s": "%S",
     }
 
     py_fmt = ""
@@ -224,11 +231,7 @@ def timesince_filter(value: object) -> str:
     from datetime import datetime
 
     try:
-        now = (
-            datetime.now(UTC)
-            if getattr(value, "tzinfo", None) is not None
-            else datetime.now()
-        )
+        now = datetime.now(UTC) if getattr(value, "tzinfo", None) is not None else datetime.now()
         delta = now - value  # type: ignore[operator]
     except (TypeError, AttributeError):
         return str(value)

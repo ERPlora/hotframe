@@ -1,4 +1,5 @@
 """Tests for hotframe.orm."""
+
 from hotframe.orm.events import setup_orm_events
 from hotframe.orm.transactions import atomic
 

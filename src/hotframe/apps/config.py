@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 # Sub-models
 # ------------------------------------------------------------------
 
+
 class MenuConfig(BaseModel):
     """Module sidebar menu entry configuration."""
 
@@ -45,6 +46,7 @@ class NavigationItem(BaseModel):
 # ------------------------------------------------------------------
 # ModuleManifest
 # ------------------------------------------------------------------
+
 
 class ModuleManifest(BaseModel):
     """
@@ -79,6 +81,7 @@ class ModuleManifest(BaseModel):
             else:
                 result.append(str(item))
         return result
+
     MIDDLEWARE: str | None = None
     SCHEDULED_TASKS: list[dict] = []
     PRICING: dict | None = None
@@ -94,6 +97,7 @@ _MANIFEST_FIELDS: set[str] = set(ModuleManifest.model_fields.keys())
 # ------------------------------------------------------------------
 # Loader
 # ------------------------------------------------------------------
+
 
 def load_manifest(module_path: Path) -> ModuleManifest:
     """
@@ -175,6 +179,7 @@ def manifest_to_dict(manifest: ModuleManifest) -> dict[str, Any]:
 # Django-like AppConfig / ModuleConfig (new contract, Fase 3+)
 # ======================================================================
 
+
 class AppConfig:
     """
     Base class for core app configurations.
@@ -210,8 +215,8 @@ class AppConfig:
 
     name: str = ""
     verbose_name: str = ""
-    mount_prefix: str = ""           # if empty, defaults to f"/{name}/"
-    media_path: str = ""             # Media subdirectory name. If empty, uses app name.
+    mount_prefix: str = ""  # if empty, defaults to f"/{name}/"
+    media_path: str = ""  # Media subdirectory name. If empty, uses app name.
     version: str = "0.1.0"
     depends: list[str] = []
     permissions: list[tuple[str, str]] = []
@@ -236,9 +241,7 @@ class AppConfig:
         if cls._abstract:
             return
         if not cls.name:
-            raise ValueError(
-                f"{cls.__name__}: AppConfig subclass must define 'name'"
-            )
+            raise ValueError(f"{cls.__name__}: AppConfig subclass must define 'name'")
 
     async def ready(self) -> None:
         """Hook. Default is no-op. Subclasses override to wire signals."""
@@ -286,7 +289,7 @@ class ModuleConfig(AppConfig):
     is_system: bool = False
     has_views: bool = True
     has_api: bool = True
-    media_path: str = ""             # Media subdirectory name. If empty, uses module name.
+    media_path: str = ""  # Media subdirectory name. If empty, uses module name.
     s3_key: str | None = None
     sha256: str | None = None
 

@@ -22,20 +22,20 @@ from enum import Enum
 class Kind(str, Enum):
     """What kind of artifact a conventional file contributes."""
 
-    ENTRY_POINT = "entry_point"            # app.py or module.py — the AppConfig/ModuleConfig subclass
-    MODELS = "models"                      # SQLAlchemy model classes
-    ROUTES = "routes"                      # urlpatterns list (or router fallback)
-    API = "api"                            # APIRouter for REST endpoints
-    SCHEMAS = "schemas"                    # Pydantic schemas (no side effects, import only)
-    SERVICES = "services"                  # ModuleService subclasses (@action)
-    REPOSITORY = "repository"              # BaseRepository subclasses
-    SIGNALS = "signals"                    # @receiver decorated functions (side effect on import)
-    MIGRATIONS = "migrations"              # Alembic per-app/module directory
-    TEMPLATES = "templates"                # Jinja2 templates directory
-    STATIC = "static"                      # Static assets directory
-    LOCALES = "locales"                    # i18n directory
-    TESTS = "tests"                        # pytest tests directory
-    MANAGEMENT = "management"              # management/commands/*.py
+    ENTRY_POINT = "entry_point"  # app.py or module.py — the AppConfig/ModuleConfig subclass
+    MODELS = "models"  # SQLAlchemy model classes
+    ROUTES = "routes"  # urlpatterns list (or router fallback)
+    API = "api"  # APIRouter for REST endpoints
+    SCHEMAS = "schemas"  # Pydantic schemas (no side effects, import only)
+    SERVICES = "services"  # ModuleService subclasses (@action)
+    REPOSITORY = "repository"  # BaseRepository subclasses
+    SIGNALS = "signals"  # @receiver decorated functions (side effect on import)
+    MIGRATIONS = "migrations"  # Alembic per-app/module directory
+    TEMPLATES = "templates"  # Jinja2 templates directory
+    STATIC = "static"  # Static assets directory
+    LOCALES = "locales"  # i18n directory
+    TESTS = "tests"  # pytest tests directory
+    MANAGEMENT = "management"  # management/commands/*.py
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,10 +48,11 @@ class Convention:
     either ``urlpatterns`` for the Django-like contract or ``router`` for
     the FastAPI-style contract).
     """
-    filename_or_dir: str                   # e.g. "models.py" or "templates"
+
+    filename_or_dir: str  # e.g. "models.py" or "templates"
     kind: Kind
     is_directory: bool = False
-    optional: bool = True                  # if False, its absence is an error
+    optional: bool = True  # if False, its absence is an error
     required_exports: tuple[str, ...] = ()  # at-least-one-of; empty = no requirement
 
 
@@ -84,6 +85,7 @@ APP_CONVENTIONS: tuple[Convention, ...] = (
 def conventions_by_kind() -> dict[Kind, tuple[Convention, ...]]:
     """Helper: group conventions by their ``Kind``."""
     from collections import defaultdict
+
     grouped: dict[Kind, list[Convention]] = defaultdict(list)
     for conv in APP_CONVENTIONS:
         grouped[conv.kind].append(conv)

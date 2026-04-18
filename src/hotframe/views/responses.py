@@ -155,7 +155,9 @@ def htmx_view(
                     from hotframe.auth.permissions import has_permission
 
                     user_perms: list[str] = getattr(
-                        request.state, "user_permissions", None,
+                        request.state,
+                        "user_permissions",
+                        None,
                     )
                     if user_perms is None:
                         user_perms = await _resolve_permissions(request, user_id)
@@ -236,24 +238,20 @@ def _render_htmx(
         logger.error("Template render error in %s: %s", tpl_name, exc)
         return HTMLResponse(
             f'<div class="alert alert-error">'
-            f'<strong>Template Error</strong>: {tpl_name}<br>'
-            f'<small>{type(exc).__name__}: {exc}</small></div>',
+            f"<strong>Template Error</strong>: {tpl_name}<br>"
+            f"<small>{type(exc).__name__}: {exc}</small></div>",
             status_code=500,
         )
 
     page_title = context.get("page_title")
     if page_title:
-        response.headers["HX-Trigger"] = json.dumps(
-            {"pageTitle": str(page_title)}
-        )
+        response.headers["HX-Trigger"] = json.dumps({"pageTitle": str(page_title)})
 
     body = response.body.decode("utf-8")
 
     if context.get("navigation"):
         try:
-            oob_html = templates.env.get_template(
-                "partials/tabbar_oob.html"
-            ).render(**context)
+            oob_html = templates.env.get_template("partials/tabbar_oob.html").render(**context)
             body += oob_html
         except Exception:
             logger.debug("tabbar_oob.html not found, skipping OOB swap")
@@ -262,11 +260,7 @@ def _render_htmx(
             '<footer id="global-tabbar-footer" class="m-2 rounded-box" hx-swap-oob="true"></footer>'
         )
 
-    headers = {
-        k: v
-        for k, v in response.headers.items()
-        if k.lower() != "content-length"
-    }
+    headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
 
     return HTMLResponse(
         content=body,
@@ -290,8 +284,8 @@ def _render_full(
         logger.error("Template render error in %s: %s", tpl_name, exc)
         return HTMLResponse(
             f'<div class="alert alert-error">'
-            f'<strong>Template Error</strong>: {tpl_name}<br>'
-            f'<small>{type(exc).__name__}: {exc}</small></div>',
+            f"<strong>Template Error</strong>: {tpl_name}<br>"
+            f"<small>{type(exc).__name__}: {exc}</small></div>",
             status_code=500,
         )
 

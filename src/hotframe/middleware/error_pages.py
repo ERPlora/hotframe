@@ -92,7 +92,9 @@ class ErrorPageMiddleware(BaseHTTPMiddleware):
             # Only intercept if the response body is empty or very small
             # Don't override custom error responses from views
             content_length = response.headers.get("content-length")
-            if content_length == "0" or (content_length is None and response.status_code in _ERROR_TITLES):
+            if content_length == "0" or (
+                content_length is None and response.status_code in _ERROR_TITLES
+            ):
                 # Let it pass — views may set their own error responses
                 pass
 

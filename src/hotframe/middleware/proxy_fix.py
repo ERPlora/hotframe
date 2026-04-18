@@ -26,7 +26,9 @@ class ProxyFixMiddleware:
     ) -> None:
         self.app = app
         self._ecs_suffix = f".ecs.{ecs_region}.on.aws".encode() if ecs_region else b""
-        self._public_host: bytes | None = f"{slug}.{domain_base}".encode() if slug and domain_base else None
+        self._public_host: bytes | None = (
+            f"{slug}.{domain_base}".encode() if slug and domain_base else None
+        )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] not in ("http", "websocket"):
@@ -69,15 +71,12 @@ class ProxyFixMiddleware:
         async def _buffering_send(message: dict) -> None:
             if message["type"] == "http.response.start":
                 headers_list = [
-                    (k, v)
-                    for k, v in message.get("headers", [])
-                    if k.lower() != b"content-length"
+                    (k, v) for k, v in message.get("headers", []) if k.lower() != b"content-length"
                 ]
                 response_started["headers"] = headers_list
                 response_started["status"] = message["status"]
                 response_started["extra"] = {
-                    k: v for k, v in message.items()
-                    if k not in ("type", "status", "headers")
+                    k: v for k, v in message.items() if k not in ("type", "status", "headers")
                 }
             elif message["type"] == "http.response.body":
                 chunk = message.get("body", b"")
@@ -93,11 +92,13 @@ class ProxyFixMiddleware:
                     }
                     start_msg.update(response_started.get("extra", {}))
                     await send(start_msg)
-                    await send({
-                        "type": "http.response.body",
-                        "body": full_body,
-                        "more_body": False,
-                    })
+                    await send(
+                        {
+                            "type": "http.response.body",
+                            "body": full_body,
+                            "more_body": False,
+                        }
+                    )
             else:
                 await send(message)
 

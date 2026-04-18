@@ -1,4 +1,5 @@
 """Tests for hotframe.views."""
+
 from hotframe.views.responses import (
     htmx_redirect,
     htmx_refresh,
@@ -79,5 +80,6 @@ class TestTurboStream:
 class TestBroadcast:
     def test_broadcast_hub_import(self):
         from hotframe.views.broadcast import BroadcastHub
+
         hub = BroadcastHub()
         assert hub is not None

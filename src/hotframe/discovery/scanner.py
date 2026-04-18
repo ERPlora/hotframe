@@ -45,18 +45,20 @@ class DiscoveryError(Exception):
 @dataclass(slots=True)
 class FileArtifact:
     """A single detected file/directory within an app."""
+
     convention: Convention
     path: Path
-    imported_module: ModuleType | None = None   # set only if it was importable
+    imported_module: ModuleType | None = None  # set only if it was importable
 
 
 @dataclass(slots=True)
 class DiscoveryResult:
     """Per-directory output of the scanner."""
-    name: str                                   # e.g. "accounts"
-    root_path: Path                             # e.g. /path/to/apps/accounts
-    package_name: str                           # e.g. "apps.accounts" or "modules.invoice"
-    entry_point: FileArtifact | None = None     # app.py xor module.py
+
+    name: str  # e.g. "accounts"
+    root_path: Path  # e.g. /path/to/apps/accounts
+    package_name: str  # e.g. "apps.accounts" or "modules.invoice"
+    entry_point: FileArtifact | None = None  # app.py xor module.py
     artifacts: list[FileArtifact] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -75,14 +77,16 @@ class DiscoveryResult:
 
 
 # Directory names that must always be skipped during scanning.
-_SKIP_DIRS: frozenset[str] = frozenset({
-    "__pycache__",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".ruff_cache",
-    "node_modules",
-    ".git",
-})
+_SKIP_DIRS: frozenset[str] = frozenset(
+    {
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        "node_modules",
+        ".git",
+    }
+)
 
 
 def scan(
@@ -178,13 +182,9 @@ def _scan_subdir(
             try:
                 artifact.imported_module = importlib.import_module(module_dotted)
             except ImportError as exc:
-                result.errors.append(
-                    f"Failed to import {module_dotted}: {exc}"
-                )
+                result.errors.append(f"Failed to import {module_dotted}: {exc}")
             except Exception as exc:  # pragma: no cover - defensive
-                result.errors.append(
-                    f"Unexpected error importing {module_dotted}: {exc}"
-                )
+                result.errors.append(f"Unexpected error importing {module_dotted}: {exc}")
 
             # Contract: required_exports uses at-least-one-of semantics.
             # The imported module must expose at least one of the listed
@@ -192,8 +192,7 @@ def _scan_subdir(
             # shapes (e.g. routes.py with urlpatterns OR router).
             if artifact.imported_module is not None and conv.required_exports:
                 present = [
-                    sym for sym in conv.required_exports
-                    if hasattr(artifact.imported_module, sym)
+                    sym for sym in conv.required_exports if hasattr(artifact.imported_module, sym)
                 ]
                 if not present:
                     raise DiscoveryError(
@@ -206,9 +205,7 @@ def _scan_subdir(
             if result.entry_point is not None:
                 # Should already have been caught by the XOR check above,
                 # but keep as a safety net.
-                raise DiscoveryError(
-                    f"Subdirectory {subdir} has multiple entry-point files."
-                )
+                raise DiscoveryError(f"Subdirectory {subdir} has multiple entry-point files.")
             result.entry_point = artifact
         else:
             result.artifacts.append(artifact)
@@ -261,8 +258,7 @@ def find_entry_config(result: DiscoveryResult) -> Any:
 
     if len(candidates) == 0:
         raise DiscoveryError(
-            f"No AppConfig/ModuleConfig subclass found in "
-            f"{result.entry_point.path}"
+            f"No AppConfig/ModuleConfig subclass found in {result.entry_point.path}"
         )
     if len(candidates) > 1:
         names = ", ".join(c.__name__ for c in candidates)

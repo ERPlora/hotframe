@@ -124,9 +124,7 @@ class PgNotifyBridge:
             logger.warning("No event loop — cannot emit pg.%s", channel)
             return
 
-        loop.create_task(
-            self._bus.emit(f"pg.{channel}", sender=self, **data)
-        )
+        loop.create_task(self._bus.emit(f"pg.{channel}", sender=self, **data))
 
     @staticmethod
     async def notify(session: AsyncSession, channel: str, payload: Any = None) -> None:

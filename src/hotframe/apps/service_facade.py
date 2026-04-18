@@ -35,9 +35,12 @@ class ActionMeta:
 def action(*, permission: str, mutates: bool = False, description: str = "") -> Any:
     def decorator(fn: Any) -> Any:
         fn._action_meta = ActionMeta(
-            permission=permission, mutates=mutates, description=description,
+            permission=permission,
+            mutates=mutates,
+            description=description,
         )
         return fn
+
     return decorator
 
 
@@ -54,12 +57,18 @@ class ModuleService:
         return HubQuery(model, self.db, self.hub_id)
 
     def repo(
-        self, model: type, *, search_fields: list[str] | None = None,
+        self,
+        model: type,
+        *,
+        search_fields: list[str] | None = None,
         default_order: str = "created_at",
     ) -> BaseRepository:
         return BaseRepository(
-            model, self.db, self.hub_id,
-            search_fields=search_fields, default_order=default_order,
+            model,
+            self.db,
+            self.hub_id,
+            search_fields=search_fields,
+            default_order=default_order,
         )
 
     @staticmethod
@@ -135,6 +144,7 @@ def _type_to_str(t: Any) -> str:
         return "array"
     try:
         from pydantic import BaseModel
+
         if isinstance(t, type) and issubclass(t, BaseModel):
             return f"object ({t.__name__})"
     except ImportError:
@@ -166,11 +176,7 @@ def register_services(module_id: str) -> int:
 
     for attr_name in dir(mod):
         attr = getattr(mod, attr_name)
-        if (
-            isinstance(attr, type)
-            and issubclass(attr, ModuleService)
-            and attr is not ModuleService
-        ):
+        if isinstance(attr, type) and issubclass(attr, ModuleService) and attr is not ModuleService:
             attr.module_id = module_id
             service_desc = (attr.__doc__ or "").strip().split("\n")[0]
             actions: dict[str, ActionEntry] = {}
@@ -182,19 +188,25 @@ def register_services(module_id: str) -> int:
                 desc = meta.description or (method.__doc__ or "").strip().split("\n")[0]
                 full_perm = f"{module_id}.{meta.permission}"
                 actions[method_name] = ActionEntry(
-                    method_name=method_name, permission=full_perm,
-                    mutates=meta.mutates, description=desc,
+                    method_name=method_name,
+                    permission=full_perm,
+                    mutates=meta.mutates,
+                    description=desc,
                     parameters=_extract_parameters(method),
                 )
             if actions:
                 module_services[attr_name] = ServiceEntry(
-                    cls=attr, description=service_desc, actions=actions,
+                    cls=attr,
+                    description=service_desc,
+                    actions=actions,
                 )
                 count += 1
 
     if module_services:
         SERVICE_REGISTRY[module_id] = module_services
-        logger.info("Registered %d service(s) from %s: %s", count, fqn, ", ".join(module_services.keys()))
+        logger.info(
+            "Registered %d service(s) from %s: %s", count, fqn, ", ".join(module_services.keys())
+        )
 
     return count
 
@@ -243,7 +255,4 @@ def generate_module_context(module_id: str) -> str:
 
 
 def generate_all_contexts() -> dict[str, str]:
-    return {
-        module_id: generate_module_context(module_id)
-        for module_id in SERVICE_REGISTRY
-    }
+    return {module_id: generate_module_context(module_id) for module_id in SERVICE_REGISTRY}

@@ -143,6 +143,7 @@ class ModuleLoader:
             # 5. Mount HTMX router (check for conflicts first)
             if router is not None:
                 from starlette.routing import Mount
+
                 htmx_path = f"/m/{module_id}"
                 if self._route_exists(htmx_path):
                     raise RuntimeError(
@@ -155,6 +156,7 @@ class ModuleLoader:
             # 6. Mount API router (check for conflicts first)
             if api_router is not None:
                 from starlette.routing import Mount
+
                 api_path = f"/api/v1/m/{module_id}"
                 if self._route_exists(api_path):
                     raise RuntimeError(
@@ -260,6 +262,7 @@ class ModuleLoader:
 
             # Unregister services
             from hotframe.apps.service_facade import unregister_module_services
+
             try:
                 unregister_module_services(module_id)
             except Exception:
@@ -283,7 +286,8 @@ class ModuleLoader:
             if static_mounted:
                 static_mount_path = f"/static/m/{module_id}"
                 self.app.routes[:] = [
-                    route for route in self.app.routes
+                    route
+                    for route in self.app.routes
                     if getattr(route, "path", None) != static_mount_path
                 ]
 
@@ -330,13 +334,12 @@ class ModuleLoader:
         # 6. Unmount module static files
         static_mount_path = f"/static/m/{module_id}"
         self.app.routes[:] = [
-            route
-            for route in self.app.routes
-            if getattr(route, "path", None) != static_mount_path
+            route for route in self.app.routes if getattr(route, "path", None) != static_mount_path
         ]
 
         # 7. Unregister services
         from hotframe.apps.service_facade import unregister_module_services
+
         unregister_module_services(module_id)
 
         # 8. Purge sys.modules via ImportManager (exact + weakref check
@@ -453,6 +456,7 @@ class ModuleLoader:
         Returns True if at least one service was registered.
         """
         from hotframe.apps.service_facade import register_services
+
         try:
             count = register_services(module_id)
             return count > 0
@@ -498,10 +502,7 @@ class ModuleLoader:
 
     def _route_exists(self, path: str) -> bool:
         """Check if a route path is already mounted."""
-        return any(
-            getattr(route, "path", None) == path
-            for route in self.app.routes
-        )
+        return any(getattr(route, "path", None) == path for route in self.app.routes)
 
     def _remove_routes(self, module_id: str) -> None:
         """Remove all routes matching the module prefixes from the app."""
@@ -522,6 +523,7 @@ class ModuleLoader:
         if mod is None:
             return
         from hotframe.models.base import Base
+
         for attr_name in dir(mod):
             obj = getattr(mod, attr_name, None)
             if isinstance(obj, type) and issubclass(obj, Base) and obj is not Base:
@@ -546,11 +548,7 @@ class ModuleLoader:
 
         # Fallback: untracked module (e.g. imported outside ImportManager).
         prefix = f"{module_id}."
-        keys_to_remove = [
-            key
-            for key in sys.modules
-            if key == module_id or key.startswith(prefix)
-        ]
+        keys_to_remove = [key for key in sys.modules if key == module_id or key.startswith(prefix)]
         for key in keys_to_remove:
             del sys.modules[key]
         if keys_to_remove:
@@ -565,6 +563,7 @@ class ModuleLoader:
 # ------------------------------------------------------------------
 # Utilities
 # ------------------------------------------------------------------
+
 
 def _import_fresh(module_id: str) -> Any:
     """Import (or re-import) a module, ensuring fresh code is loaded."""

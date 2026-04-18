@@ -11,6 +11,7 @@ running them in the correct order:
   modules/<mod1>/migrations/   (handled by ModuleMigrationRunner)
   ...
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,9 +27,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MigrationNamespace:
     """One Alembic migration namespace."""
-    name: str                                      # e.g. "core" or "accounts"
-    script_location: Path                          # path to migrations/ dir
-    version_table: str                             # alembic version table name
+
+    name: str  # e.g. "core" or "accounts"
+    script_location: Path  # path to migrations/ dir
+    version_table: str  # alembic version table name
 
     @classmethod
     def core(cls, root: Path) -> MigrationNamespace:
@@ -86,7 +88,9 @@ class MultiNamespaceRunner:
         cfg.attributes["namespace_name"] = ns.name
         return cfg
 
-    def upgrade(self, namespace: str | None = None, revision: str = "head") -> list[MigrationReport]:
+    def upgrade(
+        self, namespace: str | None = None, revision: str = "head"
+    ) -> list[MigrationReport]:
         """Upgrade one namespace (or all if None)."""
         namespaces = self.discover_namespaces()
         if namespace is not None:

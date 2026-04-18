@@ -226,6 +226,7 @@ def get_tasks_failed_counter() -> Counter:
 # Reset (for testing)
 # -----------------------------------------------------------------------
 
+
 def reset_metrics() -> None:
     """Reset all cached metric instruments. For testing only."""
     global _meter

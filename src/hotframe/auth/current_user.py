@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 def _get_session_factory():
     from hotframe.config.database import get_session_factory
+
     return get_session_factory()
 
 
@@ -49,6 +50,7 @@ def _resolve_user_model() -> type | None:
 # Database session
 # ---------------------------------------------------------------------------
 
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     FastAPI dependency that yields an async database session.
@@ -71,8 +73,10 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 # Current user
 # ---------------------------------------------------------------------------
 
+
 async def get_current_user(
-    request: Request, db: DbSession,
+    request: Request,
+    db: DbSession,
 ) -> Any:
     """
     Resolve the authenticated user from the session.
@@ -130,7 +134,8 @@ async def get_current_user(
 
 
 async def get_current_user_optional(
-    request: Request, db: DbSession,
+    request: Request,
+    db: DbSession,
 ) -> Any | None:
     """
     Same as ``get_current_user`` but returns None if not authenticated.
@@ -166,6 +171,7 @@ OptionalUser = Annotated[Any | None, Depends(get_current_user_optional)]
 # ---------------------------------------------------------------------------
 # Core registries (from app.state)
 # ---------------------------------------------------------------------------
+
 
 def get_event_bus(request: Request) -> AsyncEventBus:
     """Get the AsyncEventBus from app state."""

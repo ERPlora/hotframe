@@ -1,4 +1,5 @@
 """Tests for hotframe.signals."""
+
 import pytest
 
 from hotframe.signals.builtins import (

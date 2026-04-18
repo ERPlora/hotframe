@@ -61,7 +61,10 @@ class SoftDeleteMixin:
     @declared_attr
     def is_deleted(cls) -> Mapped[bool]:
         return mapped_column(
-            Boolean, default=False, server_default="false", index=True,
+            Boolean,
+            default=False,
+            server_default="false",
+            index=True,
         )
 
     @declared_attr

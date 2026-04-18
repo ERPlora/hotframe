@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 # Result dataclasses
 # ------------------------------------------------------------------
 
+
 @dataclass
 class InstallResult:
     """Result of a module install operation."""
@@ -109,6 +110,7 @@ class UpdateResult:
 # ------------------------------------------------------------------
 # ModuleRuntime
 # ------------------------------------------------------------------
+
 
 class ModuleRuntime:
     """
@@ -186,10 +188,7 @@ class ModuleRuntime:
         active_modules = await self.state.get_active_modules(session, hub_id)
 
         # Filter out kernel modules (already loaded before boot)
-        active_modules = [
-            m for m in active_modules
-            if not self.registry.is_loaded(m.module_id)
-        ]
+        active_modules = [m for m in active_modules if not self.registry.is_loaded(m.module_id)]
 
         if not active_modules:
             logger.info("No active modules to load for hub %s", hub_id)
@@ -262,16 +261,20 @@ class ModuleRuntime:
                     mod.module_id,
                 )
                 await self.state.set_error(
-                    session, hub_id, mod.module_id,
+                    session,
+                    hub_id,
+                    mod.module_id,
                     "Module code not available after S3 download",
                 )
                 continue
-            load_items.append({
-                "module_id": mod.module_id,
-                "manifest": mod.manifest,
-                "path": paths[mod.module_id],
-                "version": mod.version,
-            })
+            load_items.append(
+                {
+                    "module_id": mod.module_id,
+                    "manifest": mod.manifest,
+                    "path": paths[mod.module_id],
+                    "version": mod.version,
+                }
+            )
 
         ordered = self.deps.resolve_load_order(load_items)
 
@@ -338,9 +341,7 @@ class ModuleRuntime:
         if hub_id is not None:
             existing = await self.state.get_module(session, hub_id, module_id)
             if existing is not None:
-                result.error = (
-                    f"Module {module_id} is already installed (status={existing.status})"
-                )
+                result.error = f"Module {module_id} is already installed (status={existing.status})"
                 return result
 
         pipeline = HotMountPipeline(module_id=module_id)
@@ -353,7 +354,10 @@ class ModuleRuntime:
             download = await pipeline.run_phase(
                 "DOWNLOADING",
                 self._phase_download,
-                module_id, version, checksum, source,
+                module_id,
+                version,
+                checksum,
+                source,
             )
             module_path = download.payload["module_path"]
             # Propagate resolved version/checksum from source resolution
@@ -365,7 +369,11 @@ class ModuleRuntime:
             validate = await pipeline.run_phase(
                 "VALIDATING",
                 self._phase_validate,
-                session, hub_id, module_id, version, module_path,
+                session,
+                hub_id,
+                module_id,
+                version,
+                module_path,
             )
             manifest = validate.payload["manifest"]
             module_path = validate.payload["module_path"]
@@ -376,32 +384,48 @@ class ModuleRuntime:
             await pipeline.run_phase(
                 "VALIDATING",
                 self._phase_check_deps,
-                session, hub_id, manifest, auto_install_deps,
+                session,
+                hub_id,
+                manifest,
+                auto_install_deps,
             )
 
             await pipeline.run_phase(
                 "MIGRATING",
                 self._phase_migrate,
-                session, hub_id, module_id, version, checksum, installed_by,
-                manifest, module_path,
+                session,
+                hub_id,
+                module_id,
+                version,
+                checksum,
+                installed_by,
+                manifest,
+                module_path,
             )
 
             await pipeline.run_phase(
                 "IMPORTING",
                 self._phase_on_install,
-                session, hub_id, module_id,
+                session,
+                hub_id,
+                module_id,
             )
 
             await pipeline.run_phase(
                 "MOUNTING",
                 self._phase_mount,
-                module_id, module_path, manifest,
+                module_id,
+                module_path,
+                manifest,
             )
 
             await pipeline.run_phase(
                 "STACK_REBUILD",
                 self._phase_activate,
-                session, hub_id, module_id, manifest,
+                session,
+                hub_id,
+                module_id,
+                manifest,
             )
 
             await pipeline.commit()
@@ -418,26 +442,35 @@ class ModuleRuntime:
 
             result.success = True
             logger.info(
-                "Installed module %s v%s for hub %s", module_id, version, hub_id,
+                "Installed module %s v%s for hub %s",
+                module_id,
+                version,
+                hub_id,
             )
 
         except Exception as e:
             logger.exception(
                 "Install failed for %s v%s at phase %s",
-                ctx["module_id"], version, pipeline.state.current_phase,
+                ctx["module_id"],
+                version,
+                pipeline.state.current_phase,
             )
             result.error = str(e)
             rollback_errors = await pipeline.rollback()
             if rollback_errors:
                 logger.error(
                     "Rollback had %d error(s) during install cleanup of %s",
-                    len(rollback_errors), ctx["module_id"],
+                    len(rollback_errors),
+                    ctx["module_id"],
                 )
             # Best-effort: persist error status if the DB row was created.
             if hub_id is not None:
                 try:
                     await self.state.set_error(
-                        session, hub_id, ctx["module_id"], str(e),
+                        session,
+                        hub_id,
+                        ctx["module_id"],
+                        str(e),
                     )
                 except Exception as db_err:
                     logger.error(
@@ -483,6 +516,7 @@ class ModuleRuntime:
         # 1. Explicit URL source → download via MarketplaceClient
         if source and (source.startswith("http://") or source.startswith("https://")):
             from hotframe.engine.marketplace_client import MarketplaceClient
+
             client = MarketplaceClient("")
             cache_path = await client.download(source, self.settings.MODULES_CACHE_DIR, checksum)
             tmp_path = target_path.with_suffix(".tmp")
@@ -507,6 +541,7 @@ class ModuleRuntime:
         # 2. Explicit local .zip source → extract directly
         if source and source.endswith(".zip") and Path(source).exists():
             from hotframe.engine.marketplace_client import MarketplaceClient
+
             cache_path = MarketplaceClient._extract_zip(
                 Path(source), self.settings.MODULES_CACHE_DIR
             )
@@ -531,6 +566,7 @@ class ModuleRuntime:
 
         # 3. Module already on disk → skip download
         if target_path.exists() and (target_path / "module.py").exists():
+
             class _NoopDownloadRollback:
                 async def undo(self) -> None:
                     return None
@@ -544,10 +580,13 @@ class ModuleRuntime:
         # 4. Marketplace URL configured → resolve + download
         if self.settings.MODULE_MARKETPLACE_URL:
             from hotframe.engine.marketplace_client import MarketplaceClient
+
             client = MarketplaceClient(self.settings.MODULE_MARKETPLACE_URL)
             info = await client.resolve(module_id, version)
             cache_path = await client.download(
-                info.download_url, self.settings.MODULES_CACHE_DIR, info.checksum_sha256,
+                info.download_url,
+                self.settings.MODULES_CACHE_DIR,
+                info.checksum_sha256,
             )
             resolved_version = info.version
             resolved_checksum = info.checksum_sha256
@@ -596,7 +635,8 @@ class ModuleRuntime:
                     except Exception as cache_err:
                         logger.error(
                             "Rollback: failed to clear S3 cache for %s: %s",
-                            module_id, cache_err,
+                            module_id,
+                            cache_err,
                         )
 
             return PhaseResult(
@@ -625,7 +665,6 @@ class ModuleRuntime:
         """
         import shutil as _shutil
 
-
         try:
             manifest = load_manifest(module_path)
         except Exception as e:
@@ -636,13 +675,15 @@ class ModuleRuntime:
 
         if canonical_id != module_id:
             logger.warning(
-                "MODULE_ID mismatch: catalog=%r, manifest=%r — "
-                "using manifest ID as canonical",
-                module_id, canonical_id,
+                "MODULE_ID mismatch: catalog=%r, manifest=%r — using manifest ID as canonical",
+                module_id,
+                canonical_id,
             )
             if hub_id is not None:
                 existing_canonical = await self.state.get_module(
-                    session, hub_id, canonical_id,
+                    session,
+                    hub_id,
+                    canonical_id,
                 )
                 if existing_canonical is not None:
                     raise RuntimeError(
@@ -681,7 +722,8 @@ class ModuleRuntime:
                     logger.info(
                         "Validate rollback: canonical rename %s→%s left in "
                         "HubModuleVersion catalog (no undo)",
-                        renamed_from, module_id,
+                        renamed_from,
+                        module_id,
                     )
 
         return PhaseResult(
@@ -715,9 +757,7 @@ class ModuleRuntime:
                         f"{mid} requires {req}, installed {actual}"
                         for mid, req, actual in dep_check.version_mismatch
                     ]
-                    raise RuntimeError(
-                        f"Version mismatch: {'; '.join(mismatches)}"
-                    )
+                    raise RuntimeError(f"Version mismatch: {'; '.join(mismatches)}")
                 if dep_check.inactive and not auto_install_deps:
                     raise RuntimeError(
                         f"Inactive dependencies (activate first): {dep_check.inactive}"
@@ -748,7 +788,10 @@ class ModuleRuntime:
 
         if hub_id is not None:
             await self.state.create(
-                session, hub_id, module_id, version,
+                session,
+                hub_id,
+                module_id,
+                version,
                 checksum=checksum,
                 status="installing",
                 installed_by=installed_by,
@@ -775,7 +818,8 @@ class ModuleRuntime:
                     except Exception as mig_err:
                         logger.error(
                             "Rollback: failed to downgrade migrations for %s: %s",
-                            module_id, mig_err,
+                            module_id,
+                            mig_err,
                         )
                 if hub_id is not None:
                     try:
@@ -783,7 +827,8 @@ class ModuleRuntime:
                     except Exception as db_err:
                         logger.error(
                             "Rollback: failed to delete DB row for %s: %s",
-                            module_id, db_err,
+                            module_id,
+                            db_err,
                         )
 
         return PhaseResult(
@@ -840,7 +885,8 @@ class ModuleRuntime:
                     except Exception as unload_err:
                         logger.error(
                             "Rollback: failed to unload module %s: %s",
-                            module_id, unload_err,
+                            module_id,
+                            unload_err,
                         )
 
         return PhaseResult(
@@ -861,7 +907,10 @@ class ModuleRuntime:
         if hub_id is not None:
             await self.lifecycle.call(module_id, "on_activate", session, hub_id)
             await self.state.activate(
-                session, hub_id, module_id, manifest_to_dict(manifest),
+                session,
+                hub_id,
+                module_id,
+                manifest_to_dict(manifest),
             )
 
         class _ActivateRollback:
@@ -913,9 +962,12 @@ class ModuleRuntime:
                     cache_path = self.settings.MODULES_CACHE_DIR / module_id
                     if not cache_path.exists() or not (cache_path / "module.py").exists():
                         cache_path = await self.s3.download(
-                            module_id, mod.version, mod.checksum_sha256,
+                            module_id,
+                            mod.version,
+                            mod.checksum_sha256,
                         )
                     import shutil
+
                     tmp_path = module_path.with_suffix(".tmp")
                     if tmp_path.exists():
                         shutil.rmtree(tmp_path)
@@ -937,9 +989,7 @@ class ModuleRuntime:
             if not dep_check.ok:
                 inactive = dep_check.inactive
                 missing = dep_check.missing
-                result.error = (
-                    f"Cannot activate: missing deps {missing}, inactive deps {inactive}"
-                )
+                result.error = f"Cannot activate: missing deps {missing}, inactive deps {inactive}"
                 return result
 
             # Load into runtime
@@ -1035,9 +1085,7 @@ class ModuleRuntime:
                 if not cascade:
                     result.dependents = check.dependents
                     result.cascade_order = check.cascade_order
-                    result.error = (
-                        f"Cannot deactivate: modules depend on this: {check.dependents}"
-                    )
+                    result.error = f"Cannot deactivate: modules depend on this: {check.dependents}"
                     return result
 
                 # Cascade deactivation (user confirmed)
@@ -1115,8 +1163,7 @@ class ModuleRuntime:
             if not check.can_uninstall:
                 result.dependents = check.dependents
                 result.error = (
-                    "Cannot uninstall: other modules depend on this one. "
-                    "Uninstall them first."
+                    "Cannot uninstall: other modules depend on this one. Uninstall them first."
                 )
                 return result
 
@@ -1136,7 +1183,9 @@ class ModuleRuntime:
                         module_id,
                         hook_err,
                     )
-                    result.error = f"Uninstall hook failed: {hook_err}. Fix the hook or force uninstall."
+                    result.error = (
+                        f"Uninstall hook failed: {hook_err}. Fix the hook or force uninstall."
+                    )
                     return result
 
             # Revert migrations
@@ -1220,11 +1269,13 @@ class ModuleRuntime:
 
             if source and (source.startswith("http://") or source.startswith("https://")):
                 from hotframe.engine.marketplace_client import MarketplaceClient
+
                 client = MarketplaceClient("")
                 cache_path = await client.download(
                     source, self.settings.MODULES_CACHE_DIR, checksum
                 )
                 import shutil as _shutil
+
                 tmp_path = target_path.with_suffix(".tmp")
                 if tmp_path.exists():
                     _shutil.rmtree(tmp_path)
@@ -1237,6 +1288,7 @@ class ModuleRuntime:
                 import shutil as _shutil
 
                 from hotframe.engine.marketplace_client import MarketplaceClient
+
                 cache_path = MarketplaceClient._extract_zip(
                     Path(source), self.settings.MODULES_CACHE_DIR
                 )
@@ -1252,6 +1304,7 @@ class ModuleRuntime:
                 import shutil as _shutil
 
                 from hotframe.engine.marketplace_client import MarketplaceClient
+
                 client = MarketplaceClient(self.settings.MODULE_MARKETPLACE_URL)
                 info = await client.resolve(module_id, new_version or None)
                 cache_path = await client.download(
@@ -1270,7 +1323,9 @@ class ModuleRuntime:
                 module_path = target_path
             elif self.s3 is not None:
                 module_path = await self.s3.download(
-                    module_id, new_version, checksum,
+                    module_id,
+                    new_version,
+                    checksum,
                 )
             else:
                 result.error = (
@@ -1297,7 +1352,10 @@ class ModuleRuntime:
 
             # 5. Call on_upgrade lifecycle hook
             await self.lifecycle.call(
-                module_id, "on_upgrade", session, hub_id,
+                module_id,
+                "on_upgrade",
+                session,
+                hub_id,
                 from_version=mod.version,
                 to_version=new_version,
             )
@@ -1401,11 +1459,20 @@ class ModuleRuntime:
             if manifest.DEPENDENCIES:
                 for dep_id in manifest.DEPENDENCIES:
                     dep_str = dep_id if isinstance(dep_id, str) else str(dep_id)
-                    dep_module_id = dep_str.split(">=")[0].split("<=")[0].split("==")[0].split("!=")[0].split(">")[0].split("<")[0].strip()
+                    dep_module_id = (
+                        dep_str.split(">=")[0]
+                        .split("<=")[0]
+                        .split("==")[0]
+                        .split("!=")[0]
+                        .split(">")[0]
+                        .split("<")[0]
+                        .strip()
+                    )
                     if not self.registry.is_loaded(dep_module_id):
                         logger.error(
                             "Hot-reload %s: dependency %s is not loaded — aborting",
-                            module_id, dep_module_id,
+                            module_id,
+                            dep_module_id,
                         )
                         return False
 
@@ -1426,6 +1493,7 @@ class ModuleRuntime:
         if templates is None:
             return
         from hotframe.templating.engine import refresh_template_dirs
+
         refresh_template_dirs(templates, self.settings.MODULES_DIR)
 
     # ------------------------------------------------------------------
@@ -1461,7 +1529,10 @@ class ModuleRuntime:
             # Re-serialize manifest to DB so it stays in sync with the
             # current key format produced by manifest_to_dict().
             await self.state.update_manifest(
-                session, hub_id, module_id, manifest_to_dict(manifest),
+                session,
+                hub_id,
+                module_id,
+                manifest_to_dict(manifest),
             )
 
             return True
@@ -1530,11 +1601,13 @@ class ModuleRuntime:
                 continue
 
             # Need to download from S3
-            to_download.append((
-                mod.module_id,
-                mod.version,
-                mod.checksum_sha256,
-            ))
+            to_download.append(
+                (
+                    mod.module_id,
+                    mod.version,
+                    mod.checksum_sha256,
+                )
+            )
 
         if to_download:
             logger.info("Downloading %d modules from S3", len(to_download))

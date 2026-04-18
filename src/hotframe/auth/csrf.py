@@ -39,6 +39,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             self._exempt_prefixes = exempt_prefixes
         else:
             from hotframe.config.settings import get_settings
+
             settings = get_settings()
             self._exempt_prefixes = tuple(settings.CSRF_EXEMPT_PREFIXES)
 
@@ -89,7 +90,10 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             return header_token
 
         content_type = request.headers.get("content-type", "")
-        if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+        if (
+            "application/x-www-form-urlencoded" in content_type
+            or "multipart/form-data" in content_type
+        ):
             try:
                 form = await request.form()
                 form_token = form.get(FORM_FIELD)

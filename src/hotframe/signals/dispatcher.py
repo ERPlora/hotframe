@@ -325,9 +325,7 @@ class AsyncEventBus:
         """
         event_name = event_class.event_name
         if not event_name:
-            raise ValueError(
-                f"Event class {event_class.__name__} must define event_name ClassVar"
-            )
+            raise ValueError(f"Event class {event_class.__name__} must define event_name ClassVar")
 
         # Auto-register the event class if not already known
         if not self._registry.is_registered(event_name):

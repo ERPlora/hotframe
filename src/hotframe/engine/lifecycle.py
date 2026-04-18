@@ -25,13 +25,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = logging.getLogger(__name__)
 
 # Valid lifecycle hook names
-LIFECYCLE_HOOKS = frozenset({
-    "on_install",
-    "on_activate",
-    "on_deactivate",
-    "on_uninstall",
-    "on_upgrade",
-})
+LIFECYCLE_HOOKS = frozenset(
+    {
+        "on_install",
+        "on_activate",
+        "on_deactivate",
+        "on_uninstall",
+        "on_upgrade",
+    }
+)
 
 
 class ModuleLifecycleManager:
@@ -66,8 +68,7 @@ class ModuleLifecycleManager:
         """
         if hook_name not in LIFECYCLE_HOOKS:
             raise ValueError(
-                f"Unknown lifecycle hook: {hook_name!r}. "
-                f"Valid hooks: {sorted(LIFECYCLE_HOOKS)}"
+                f"Unknown lifecycle hook: {hook_name!r}. Valid hooks: {sorted(LIFECYCLE_HOOKS)}"
             )
 
         lifecycle_mod = self._try_import_lifecycle(module_id)

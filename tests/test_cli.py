@@ -1,4 +1,5 @@
 """Tests for hotframe.management.cli."""
+
 import os
 
 from typer.testing import CliRunner

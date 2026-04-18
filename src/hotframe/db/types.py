@@ -7,6 +7,7 @@ Currently provides:
 - EncryptedText: same as EncryptedString but backed by TEXT for large payloads
   (PEM certificates, .pfx base64, etc.).
 """
+
 from __future__ import annotations
 
 from typing import Any

@@ -87,7 +87,10 @@ class DependencyManager:
     """Manages inter-module dependencies."""
 
     async def check_install_deps(
-        self, session: AsyncSession, manifest: ModuleManifest, **filters,
+        self,
+        session: AsyncSession,
+        manifest: ModuleManifest,
+        **filters,
     ) -> DependencyCheckResult:
         Model = _get_module_model()
         result = DependencyCheckResult()
@@ -111,7 +114,10 @@ class DependencyManager:
         return result
 
     async def check_can_deactivate(
-        self, session: AsyncSession, module_id: str, **filters,
+        self,
+        session: AsyncSession,
+        module_id: str,
+        **filters,
     ) -> DeactivateCheckResult:
         dependent_ids = await self._find_active_dependents(session, module_id, **filters)
 
@@ -127,7 +133,10 @@ class DependencyManager:
         )
 
     async def check_can_uninstall(
-        self, session: AsyncSession, module_id: str, **filters,
+        self,
+        session: AsyncSession,
+        module_id: str,
+        **filters,
     ) -> UninstallCheckResult:
         Model = _get_module_model()
         stmt = select(Model.module_id, Model.status).where(
@@ -205,8 +214,11 @@ class DependencyManager:
         return ordered
 
     async def deactivate_cascade(
-        self, session: AsyncSession, module_id: str,
-        runtime: ModuleRuntime, **filters,
+        self,
+        session: AsyncSession,
+        module_id: str,
+        runtime: ModuleRuntime,
+        **filters,
     ) -> None:
         cascade = await self._build_cascade_order(session, module_id, **filters)
         for mid in cascade:
@@ -216,7 +228,10 @@ class DependencyManager:
             await runtime.deactivate(session, mid, cascade=False, **filters)
 
     async def _build_cascade_order(
-        self, session: AsyncSession, module_id: str, **filters,
+        self,
+        session: AsyncSession,
+        module_id: str,
+        **filters,
     ) -> list[str]:
         order: list[str] = []
         visited: set[str] = set()
@@ -237,7 +252,10 @@ class DependencyManager:
         return order
 
     async def _find_active_dependents(
-        self, session: AsyncSession, module_id: str, **filters,
+        self,
+        session: AsyncSession,
+        module_id: str,
+        **filters,
     ) -> list[str]:
         Model = _get_module_model()
         stmt = select(Model.module_id, Model.manifest).where(

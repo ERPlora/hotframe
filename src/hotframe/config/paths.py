@@ -29,7 +29,7 @@ class DataPaths:
     def __init__(self, base: Path | None = None) -> None:
         if base is not None:
             self._base = base.resolve()
-        elif (env := os.environ.get("DATA_PATH")):
+        elif env := os.environ.get("DATA_PATH"):
             self._base = Path(env).resolve()
         else:
             # Ephemeral base — all local data is cache/temp

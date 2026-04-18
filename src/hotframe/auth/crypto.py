@@ -7,6 +7,7 @@ In development, if HUB_SECRETS_KEY is unset, a deterministic key is derived
 from HUB_SECRET_KEY to keep dev experience smooth. In production the absence
 of HUB_SECRETS_KEY raises an error at startup (enforced by settings validator).
 """
+
 from __future__ import annotations
 
 import base64

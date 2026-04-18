@@ -1,4 +1,5 @@
 """Tests for hotframe.apps."""
+
 from hotframe.apps.config import AppConfig, ModuleConfig, ModuleManifest
 from hotframe.apps.registry import ModuleRegistry
 from hotframe.apps.service_facade import ModuleService, action

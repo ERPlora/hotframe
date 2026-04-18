@@ -1,4 +1,5 @@
 """End-to-end tests — create app, make requests, verify responses."""
+
 import os
 
 import pytest

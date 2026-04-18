@@ -66,8 +66,7 @@ class HotframeSettings(BaseSettings):
     SECRETS_KEY: str | None = Field(
         default=None,
         description=(
-            "Fernet key for encrypting secrets at rest. "
-            "Required in production deployments."
+            "Fernet key for encrypting secrets at rest. Required in production deployments."
         ),
     )
     DEBUG: bool = True
@@ -220,9 +219,7 @@ class HotframeSettings(BaseSettings):
             try:
                 decoded = base64.urlsafe_b64decode(self.SECRETS_KEY)
             except Exception as exc:
-                raise ValueError(
-                    f"SECRETS_KEY is not valid url-safe base64: {exc}"
-                ) from exc
+                raise ValueError(f"SECRETS_KEY is not valid url-safe base64: {exc}") from exc
             if len(decoded) != 32:
                 raise ValueError(
                     f"SECRETS_KEY must decode to exactly 32 bytes "

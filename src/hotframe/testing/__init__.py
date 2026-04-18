@@ -106,7 +106,8 @@ async def test_db_session() -> AsyncGenerator[AsyncSession, None]:
 
     if _test_session_factory is None:
         _test_session_factory = async_sessionmaker(
-            _test_engine, expire_on_commit=False,
+            _test_engine,
+            expire_on_commit=False,
         )
 
     async with _test_session_factory() as session:

@@ -141,6 +141,7 @@ exclude_lines = [
 
 [tool.importlinter]
 root_package = "hotframe"
+include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "hotframe no importa aplicación usuaria"

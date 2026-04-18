@@ -65,6 +65,7 @@ class ModuleMigrationRunner:
             # Ensure module parent is in sys.path so env.py can import module models
             import asyncio
             import sys
+
             parent = str(module_path.parent)
             if parent not in sys.path:
                 sys.path.insert(0, parent)
@@ -76,6 +77,7 @@ class ModuleMigrationRunner:
 
             def _run_upgrade():
                 from sqlalchemy.pool import NullPool
+
                 engine = create_engine(db_url, poolclass=NullPool)
                 # Pass engine (not connection) — env.py does connectable.connect()
                 config.attributes["connection"] = engine
@@ -120,6 +122,7 @@ class ModuleMigrationRunner:
 
         try:
             import asyncio
+
             await asyncio.to_thread(command.downgrade, config, "base")
             logger.info("Downgrade complete for %s", module_id)
         except Exception:

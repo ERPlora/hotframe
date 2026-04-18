@@ -117,12 +117,14 @@ class ModuleRegistry:
         for entry in self._modules.values():
             menu = entry.manifest.MENU
             if menu is not None:
-                items.append({
-                    "module_id": entry.module_id,
-                    "label": menu.label,
-                    "icon": menu.icon,
-                    "order": menu.order,
-                })
+                items.append(
+                    {
+                        "module_id": entry.module_id,
+                        "label": menu.label,
+                        "icon": menu.icon,
+                        "order": menu.order,
+                    }
+                )
         items.sort(key=lambda m: (m["order"], m["label"]))
         return items
 

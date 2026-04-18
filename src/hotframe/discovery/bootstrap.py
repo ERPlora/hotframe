@@ -61,7 +61,12 @@ async def boot_kernel_modules(
 
         try:
             await _boot_single_kernel_module(
-                session, name, module_dir, loader, registry, **extra_fields,
+                session,
+                name,
+                module_dir,
+                loader,
+                registry,
+                **extra_fields,
             )
             loaded += 1
         except Exception:
@@ -95,14 +100,20 @@ async def _boot_single_kernel_module(
     existing = await state_db.get_module(session, name, **extra_fields)
     if existing is None:
         await state_db.create(
-            session, name, manifest.MODULE_VERSION,
-            status="active", is_system=True, **extra_fields,
+            session,
+            name,
+            manifest.MODULE_VERSION,
+            status="active",
+            is_system=True,
+            **extra_fields,
         )
     else:
         if existing.version != manifest.MODULE_VERSION:
             await state_db.set_status(session, name, "active", **extra_fields)
             await state_db.update_manifest(
-                session, name, manifest._asdict() if hasattr(manifest, "_asdict") else {},
+                session,
+                name,
+                manifest._asdict() if hasattr(manifest, "_asdict") else {},
                 **extra_fields,
             )
 

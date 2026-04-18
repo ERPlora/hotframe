@@ -99,6 +99,7 @@ def setup_orm_events(bus: Any, base: type[DeclarativeBase] | None = None) -> Non
               registered on ``Mapper`` directly (catches all mapped classes).
     """
     import importlib
+
     _catalog = importlib.import_module("hotframe.signals.catalog")
     ModelPostDeleteEvent = _catalog.ModelPostDeleteEvent
     ModelPostSaveEvent = _catalog.ModelPostSaveEvent

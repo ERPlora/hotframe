@@ -1,4 +1,5 @@
 """Tests for hotframe.models."""
+
 from hotframe.models.base import ActiveModel, Base, HubBaseModel, TimeStampedModel
 from hotframe.models.mixins import AuditMixin, SoftDeleteMixin, TimestampMixin
 

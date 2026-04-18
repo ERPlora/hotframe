@@ -69,6 +69,7 @@ _module_locales: dict[str, Path] = {}  # module_id -> locales path
 # Language activation
 # ---------------------------------------------------------------------------
 
+
 def get_current_language() -> str:
     """Get the current language code for this context."""
     return _current_language.get()
@@ -87,8 +88,7 @@ def activate(language: str) -> None:
     supported_codes = {code for code, _ in SUPPORTED_LANGUAGES}
     if language not in supported_codes:
         raise ValueError(
-            f"Unsupported language: {language!r}. "
-            f"Supported: {', '.join(sorted(supported_codes))}"
+            f"Unsupported language: {language!r}. Supported: {', '.join(sorted(supported_codes))}"
         )
     _current_language.set(language)
 
@@ -106,6 +106,7 @@ def get_available_languages() -> list[tuple[str, str]]:
 # ---------------------------------------------------------------------------
 # Translation cache (LRU)
 # ---------------------------------------------------------------------------
+
 
 @lru_cache(maxsize=128)
 def _get_translation(
@@ -142,6 +143,7 @@ def _clear_cache() -> None:
 # ---------------------------------------------------------------------------
 # Translation functions
 # ---------------------------------------------------------------------------
+
 
 def _(text: str, module_id: str | None = None) -> str:
     """
@@ -216,6 +218,7 @@ def ngettext(
 # Module locale registration
 # ---------------------------------------------------------------------------
 
+
 def register_module_locales(module_id: str, locales_dir: Path) -> None:
     """
     Register a module's locales directory.
@@ -251,6 +254,7 @@ def get_registered_module_locales() -> dict[str, Path]:
 # ---------------------------------------------------------------------------
 # LazyString — deferred translation
 # ---------------------------------------------------------------------------
+
 
 class LazyString:
     """
@@ -317,6 +321,7 @@ class LazyString:
 # ---------------------------------------------------------------------------
 # Jinja2 translations adapter
 # ---------------------------------------------------------------------------
+
 
 class _RequestTranslations:
     """

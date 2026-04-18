@@ -212,7 +212,8 @@ def create_app(settings: HotframeSettings | None = None) -> FastAPI:
         templates = request.app.state.templates
         nonce = getattr(request.state, "csp_nonce", "")
         return templates.TemplateResponse(
-            request, "errors/403.html",
+            request,
+            "errors/403.html",
             {"request": request, "csp_nonce": nonce},
             status_code=403,
         )
@@ -222,7 +223,8 @@ def create_app(settings: HotframeSettings | None = None) -> FastAPI:
         templates = request.app.state.templates
         nonce = getattr(request.state, "csp_nonce", "")
         return templates.TemplateResponse(
-            request, "errors/405.html",
+            request,
+            "errors/405.html",
             {"request": request, "csp_nonce": nonce},
             status_code=405,
         )
@@ -262,10 +264,8 @@ def _auto_discover_apps(app: FastAPI) -> None:
     app_names = sorted(
         d.name
         for d in apps_dir.iterdir()
-        if d.is_dir()
-        and not d.name.startswith((".", "_"))
-        and (d / "__init__.py").exists()
-        )
+        if d.is_dir() and not d.name.startswith((".", "_")) and (d / "__init__.py").exists()
+    )
 
     mounted = []
 

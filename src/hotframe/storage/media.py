@@ -52,6 +52,7 @@ class MediaStorage:
     def __init__(self, settings: Any | None = None) -> None:
         if settings is None:
             from hotframe.config.settings import get_settings
+
             settings = get_settings()
 
         self._storage_type = settings.MEDIA_STORAGE
@@ -186,8 +187,7 @@ class MediaStorage:
             import aioboto3
         except ImportError:
             raise ImportError(
-                "aioboto3 is required for S3 media storage. "
-                "Install it with: pip install aioboto3"
+                "aioboto3 is required for S3 media storage. Install it with: pip install aioboto3"
             ) from None
 
         session = aioboto3.Session()
@@ -233,9 +233,7 @@ class MediaStorage:
         session = aioboto3.Session()
         async with session.client("s3", region_name=self._aws_region) as s3:
             try:
-                response = await s3.list_objects_v2(
-                    Bucket=self._s3_bucket, Prefix=prefix + "/"
-                )
+                response = await s3.list_objects_v2(Bucket=self._s3_bucket, Prefix=prefix + "/")
                 return [obj["Key"] for obj in response.get("Contents", [])]
             except Exception:
                 return []

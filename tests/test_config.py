@@ -1,4 +1,5 @@
 """Tests for hotframe.config.settings."""
+
 import pytest
 
 from hotframe.config.settings import HotframeSettings, get_settings, reset_settings, set_settings
@@ -32,7 +33,11 @@ class TestHotframeSettings:
         assert s.is_production is False
 
     def test_is_production_true(self):
-        s = HotframeSettings(DEPLOYMENT_MODE="web", DEBUG=False, SECRETS_KEY="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+        s = HotframeSettings(
+            DEPLOYMENT_MODE="web",
+            DEBUG=False,
+            SECRETS_KEY="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        )
         assert s.is_production is True
 
     def test_log_level_normalization(self):

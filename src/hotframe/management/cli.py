@@ -31,6 +31,7 @@ app = typer.Typer(
 # startproject
 # ---------------------------------------------------------------------------
 
+
 @app.command()
 def startproject(name: str) -> None:
     """Create a new hotframe project. Use '.' to create in the current directory."""
@@ -38,9 +39,19 @@ def startproject(name: str) -> None:
         project_dir = Path.cwd()
         name = project_dir.name
         # Check it's empty enough (allow .venv, pyproject.toml, uv.lock)
-        existing = {p.name for p in project_dir.iterdir()} - {".venv", "pyproject.toml", "uv.lock", ".git", ".gitignore", "__pycache__", ".python-version"}
+        existing = {p.name for p in project_dir.iterdir()} - {
+            ".venv",
+            "pyproject.toml",
+            "uv.lock",
+            ".git",
+            ".gitignore",
+            "__pycache__",
+            ".python-version",
+        }
         if existing:
-            typer.echo(f"Error: directory is not empty. Found: {', '.join(sorted(existing))}", err=True)
+            typer.echo(
+                f"Error: directory is not empty. Found: {', '.join(sorted(existing))}", err=True
+            )
             raise typer.Exit(1)
     else:
         project_dir = Path(name)
@@ -50,21 +61,26 @@ def startproject(name: str) -> None:
         project_dir.mkdir(parents=True)
 
     # main.py
-    (project_dir / "main.py").write_text(dedent('''\
+    (project_dir / "main.py").write_text(
+        dedent("""\
         from hotframe import create_app
         from settings import settings
 
         app = create_app(settings)
-    '''))
+    """)
+    )
 
     # asgi.py
-    (project_dir / "asgi.py").write_text(dedent('''\
+    (project_dir / "asgi.py").write_text(
+        dedent("""\
         from main import app  # noqa: F401
         # uvicorn asgi:app
-    '''))
+    """)
+    )
 
     # settings.py
-    (project_dir / "settings.py").write_text(dedent(f'''\
+    (project_dir / "settings.py").write_text(
+        dedent(f'''\
         from hotframe import HotframeSettings
         from pydantic_settings import SettingsConfigDict
 
@@ -170,28 +186,34 @@ def startproject(name: str) -> None:
 
 
         settings = Settings()
-    '''))
+    ''')
+    )
 
     # manage.py
-    (project_dir / "manage.py").write_text(dedent('''\
+    (project_dir / "manage.py").write_text(
+        dedent('''\
         #!/usr/bin/env python
         """Management CLI — delegates to hotframe."""
         from hotframe.management.cli import app
 
         if __name__ == "__main__":
             app()
-    '''))
+    ''')
+    )
 
     # .env
-    (project_dir / ".env").write_text(dedent('''\
+    (project_dir / ".env").write_text(
+        dedent("""\
         # Database (SQLite for development)
         DATABASE_URL=sqlite+aiosqlite:///./app.db
         SECRET_KEY=change-me-in-production
         DEBUG=true
-    '''))
+    """)
+    )
 
     # .gitignore
-    (project_dir / ".gitignore").write_text(dedent('''\
+    (project_dir / ".gitignore").write_text(
+        dedent("""\
         # Python
         __pycache__/
         *.py[cod]
@@ -213,11 +235,13 @@ def startproject(name: str) -> None:
         # IDE
         .vscode/
         .idea/
-    '''))
+    """)
+    )
 
     # pyproject.toml — skip if already exists (user may have uv.lock, custom deps)
     if not (project_dir / "pyproject.toml").exists():
-        (project_dir / "pyproject.toml").write_text(dedent(f'''\
+        (project_dir / "pyproject.toml").write_text(
+            dedent(f'''\
             [project]
             name = "{name}"
             version = "0.1.0"
@@ -244,7 +268,8 @@ def startproject(name: str) -> None:
 
             [tool.mypy]
             cache_dir = ".cache/mypy"
-        '''))
+        ''')
+        )
 
     # apps/ directory
     apps_dir = project_dir / "apps"
@@ -256,7 +281,8 @@ def startproject(name: str) -> None:
     shared_dir.mkdir(parents=True)
     (shared_dir / "__init__.py").write_text("")
 
-    (shared_dir / "app.py").write_text(dedent(f'''\
+    (shared_dir / "app.py").write_text(
+        dedent(f'''\
         from hotframe import AppConfig
 
 
@@ -266,9 +292,11 @@ def startproject(name: str) -> None:
 
             def ready(self):
                 pass
-    '''))
+    ''')
+    )
 
-    (shared_dir / "routes.py").write_text(dedent('''\
+    (shared_dir / "routes.py").write_text(
+        dedent('''\
         """Shared routes — index page and base endpoints."""
         from fastapi import APIRouter, Request
         from fastapi.responses import HTMLResponse
@@ -289,32 +317,357 @@ def startproject(name: str) -> None:
                 f"<h1>{request.app.title}</h1>"
                 f"<p>Powered by <a href=\\"https://github.com/ERPlora/hotframe\\">hotframe</a></p>"
             )
-    '''))
+    ''')
+    )
 
     # apps/shared/templates/
     shared_tpl = shared_dir / "templates" / "shared"
     shared_tpl.mkdir(parents=True)
 
-    (shared_tpl / "base.html").write_text(dedent(f'''\
+    (shared_tpl / "base.html").write_text(
+        dedent(f"""\
         <!DOCTYPE html>
         <html lang="en">
         <head>
             <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>{{% block title %}}{name.replace("_", " ").title()}{{% endblock %}}</title>
-            <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+            <title>{{%- block title %}}{name.replace("_", " ").title()}{{%- endblock %}}</title>
+
+            {{# ================================================================== #}}
+            {{# Trusted Types policy — allows Alpine.js and HTMX to work with CSP #}}
+            {{# ================================================================== #}}
+            <script nonce="{{{{ csp_nonce }}}}">
+            if (window.trustedTypes && trustedTypes.createPolicy) {{
+                trustedTypes.createPolicy('default', {{
+                    createHTML: (s) => s,
+                    createScript: (s) => s,
+                    createScriptURL: (s) => s,
+                }});
+            }}
+            </script>
+
+            {{# ================================================================== #}}
+            {{# HTMX + extensions                                                 #}}
+            {{# ================================================================== #}}
+            <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" nonce="{{{{ csp_nonce }}}}"></script>
+            <script src="https://unpkg.com/idiomorph@0.4.0/dist/idiomorph-ext.min.js" nonce="{{{{ csp_nonce }}}}"></script>
+            <script src="https://unpkg.com/htmx-ext-preload@2.1.0/preload.js" nonce="{{{{ csp_nonce }}}}"></script>
+            <script src="https://unpkg.com/htmx-ext-loading-states@2.0.1/loading-states.js" nonce="{{{{ csp_nonce }}}}"></script>
+
+            {{# ================================================================== #}}
+            {{# Alpine.js plugins (BEFORE Alpine core, all with defer)            #}}
+            {{# ================================================================== #}}
+            <script src="https://unpkg.com/@alpinejs/collapse@3.15.8/dist/cdn.min.js" defer nonce="{{{{ csp_nonce }}}}"></script>
+            <script src="https://unpkg.com/@alpinejs/intersect@3.15.8/dist/cdn.min.js" defer nonce="{{{{ csp_nonce }}}}"></script>
+            <script src="https://unpkg.com/@alpinejs/focus@3.15.8/dist/cdn.min.js" defer nonce="{{{{ csp_nonce }}}}"></script>
+            <script src="https://unpkg.com/@alpinejs/mask@3.15.8/dist/cdn.min.js" defer nonce="{{{{ csp_nonce }}}}"></script>
+            <script src="https://unpkg.com/@alpinejs/sort@3.15.8/dist/cdn.min.js" defer nonce="{{{{ csp_nonce }}}}"></script>
+
+            {{# Alpine.js core (MUST be LAST, after all plugins) #}}
+            <script src="https://unpkg.com/alpinejs@3.15.8/dist/cdn.min.js" defer nonce="{{{{ csp_nonce }}}}"></script>
+
+            {{# ================================================================== #}}
+            {{# Iconify (icon system via CDN)                                     #}}
+            {{# ================================================================== #}}
+            <script src="https://cdn.jsdelivr.net/npm/@iconify/iconify@3.1.1/dist/iconify.min.js" defer nonce="{{{{ csp_nonce }}}}"></script>
+
+            {{# ================================================================== #}}
+            {{# HTMX configuration: morph by default, no settle delay, CSP nonce  #}}
+            {{# ================================================================== #}}
+            <meta name="htmx-config" content='{{"defaultSwapStyle":"morph","defaultSettleDelay":"0","inlineScriptNonce":"{{{{ csp_nonce }}}}"}}'>
+
+            {{# ================================================================== #}}
+            {{# Global styles                                                     #}}
+            {{# ================================================================== #}}
             <style>
-                body {{ font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }}
+                /* Alpine.js cloak — prevent flash of unstyled content */
+                [x-cloak] {{ display: none !important; }}
+
+                /* Smooth content transition */
+                @keyframes page-enter {{
+                    from {{ opacity: 0; transform: translateY(4px); }}
+                    to   {{ opacity: 1; transform: translateY(0); }}
+                }}
+                .page-entering {{
+                    animation: page-enter 0.18s ease-out both;
+                }}
+
+                /* HTMX request indicator */
+                .htmx-indicator {{ opacity: 0; transition: opacity 0.2s ease; }}
+                .htmx-request .htmx-indicator,
+                .htmx-request.htmx-indicator {{ opacity: 1; }}
+
+                /* Fixed top progress bar */
+                #htmx-indicator {{
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    height: 3px;
+                    background: var(--color-primary, #3b82f6);
+                    z-index: 9999;
+                    opacity: 0;
+                    transition: opacity 0.2s ease-out;
+                }}
+                .htmx-request #htmx-indicator,
+                .htmx-request.htmx-indicator {{ opacity: 1; }}
+                #htmx-indicator::after {{
+                    content: '';
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+                    animation: htmx-loading 1.5s ease-in-out infinite;
+                }}
+                @keyframes htmx-loading {{
+                    0% {{ transform: translateX(-100%); }}
+                    100% {{ transform: translateX(100%); }}
+                }}
+
+                /* Prevent body scroll when modal is open */
+                body.modal-open {{ overflow: hidden; }}
             </style>
-            {{% block head %}}{{% endblock %}}
+
+            {{%- block head_extra %}}{{%- endblock %}}
         </head>
-        <body hx-boost="true">
-            {{% block content %}}{{% endblock %}}
+        <body hx-boost="true" hx-ext="morph,preload,loading-states" hx-headers='{{"X-CSRF-Token": "{{{{ csrf_token }}}}"}}' {{%- block body_attrs %}}{{%- endblock %}}>
+
+            {{# Fixed top progress bar #}}
+            <div id="htmx-indicator"></div>
+
+            {{%- block body %}}
+            {{%- block content %}}{{%- endblock %}}
+            {{%- endblock %}}
+
+            {{# Modal container — for HTMX-loaded modals #}}
+            <div id="modal-container"></div>
+
+            {{# Toast container #}}
+            <div id="toast-container" style="position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); z-index:9999; display:flex; flex-direction:column; gap:0.5rem; align-items:center;"></div>
+
+            {{# ================================================================== #}}
+            {{# Toast & Confirm — UI primitives                                   #}}
+            {{# ================================================================== #}}
+            <script nonce="{{{{ csp_nonce }}}}">
+            (function() {{
+                var icons = {{
+                    info: '<svg style="width:20px;height:20px;flex-shrink:0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"/></svg>',
+                    success: '<svg style="width:20px;height:20px;flex-shrink:0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>',
+                    warning: '<svg style="width:20px;height:20px;flex-shrink:0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>',
+                    error: '<svg style="width:20px;height:20px;flex-shrink:0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"/></svg>'
+                }};
+
+                window.dismissToast = function(el) {{
+                    el.style.opacity = '0';
+                    el.style.transform = 'translateY(10px)';
+                    setTimeout(function() {{ el.remove(); }}, 300);
+                }};
+
+                window.showToast = function(message, type, duration) {{
+                    type = type || 'default';
+                    duration = duration || 4000;
+                    var container = document.getElementById('toast-container');
+                    if (!container) return;
+                    var icon = icons[type] || '';
+                    var el = document.createElement('div');
+                    el.style.cssText = 'display:flex; align-items:center; gap:0.5rem; padding:0.75rem 1rem; border-radius:0.5rem; background:#1f2937; color:#fff; font-size:0.875rem; box-shadow:0 4px 12px rgba(0,0,0,0.15); transition:opacity 0.3s, transform 0.3s; max-width:24rem;';
+                    el.innerHTML = icon + '<span>' + message + '</span>';
+                    el.onclick = function() {{ window.dismissToast(el); }};
+                    container.appendChild(el);
+                    setTimeout(function() {{ window.dismissToast(el); }}, duration);
+                }};
+
+                window.Toast = {{
+                    success: function(msg, dur) {{ showToast(msg, 'success', dur); }},
+                    error: function(msg, dur) {{ showToast(msg, 'error', dur || 5000); }},
+                    warning: function(msg, dur) {{ showToast(msg, 'warning', dur); }},
+                    info: function(msg, dur) {{ showToast(msg, 'info', dur); }}
+                }};
+
+                window.showConfirm = function(header, message, onConfirm, confirmLabel, cancelLabel) {{
+                    var backdrop = document.createElement('div');
+                    backdrop.style.cssText = 'position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center;';
+                    backdrop.innerHTML =
+                        '<div style="background:#fff; border-radius:0.75rem; padding:1.5rem; max-width:24rem; width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.3);">' +
+                            '<h3 style="margin:0 0 0.5rem; font-size:1.125rem;">' + header + '</h3>' +
+                            '<p style="margin:0 0 1.5rem; color:#6b7280;">' + message + '</p>' +
+                            '<div style="display:flex; justify-content:flex-end; gap:0.5rem;">' +
+                                '<button data-action="cancel" style="padding:0.5rem 1rem; border:1px solid #d1d5db; border-radius:0.375rem; background:#fff; cursor:pointer;">' + (cancelLabel || 'Cancel') + '</button>' +
+                                '<button data-action="confirm" style="padding:0.5rem 1rem; border:none; border-radius:0.375rem; background:#3b82f6; color:#fff; cursor:pointer;">' + (confirmLabel || 'Confirm') + '</button>' +
+                            '</div>' +
+                        '</div>';
+                    document.body.appendChild(backdrop);
+                    document.body.classList.add('modal-open');
+                    function close() {{
+                        document.body.classList.remove('modal-open');
+                        backdrop.remove();
+                    }}
+                    backdrop.querySelector('[data-action="cancel"]').addEventListener('click', close);
+                    backdrop.querySelector('[data-action="confirm"]').addEventListener('click', function() {{
+                        close();
+                        if (onConfirm) onConfirm();
+                    }});
+                    backdrop.addEventListener('click', function(e) {{
+                        if (e.target === backdrop) close();
+                    }});
+                }};
+
+                {{# HX-Trigger event listeners #}}
+                document.body.addEventListener('showMessage', function(e) {{
+                    var d = e.detail || {{}};
+                    var msg = d.message || d.value || '';
+                    if (msg) showToast(msg, d.type || 'success', d.type === 'error' ? 5000 : 4000);
+                }});
+                document.body.addEventListener('showNotification', function(e) {{
+                    var d = e.detail || {{}};
+                    var text = d.title ? (d.title + ': ' + (d.message || '')) : (d.message || '');
+                    if (text) showToast(text, d.type || 'default');
+                }});
+            }})();
+            </script>
+
+            {{%- block scripts %}}{{%- endblock %}}
+
+            {{# ================================================================== #}}
+            {{# Alpine.js Global Stores (nav + sidebar + ui)                      #}}
+            {{# ================================================================== #}}
+            <script nonce="{{{{ csp_nonce }}}}">
+            document.addEventListener('alpine:init', function() {{
+                {{# Navigation Store — tracks current active path #}}
+                Alpine.store('nav', {{
+                    currentPath: window.location.pathname,
+                    setPath: function(path) {{
+                        this.currentPath = path;
+                    }},
+                    isActive: function(itemPath) {{
+                        if (!itemPath || !this.currentPath) return false;
+                        return this.currentPath === itemPath ||
+                               this.currentPath.startsWith(itemPath + '/');
+                    }},
+                    init: function() {{}}
+                }});
+
+                {{# Sidebar Store — open/close sidebar state #}}
+                Alpine.store('sidebar', {{
+                    isOpen: false,
+                    title: '',
+                    open: function(title) {{
+                        this.title = title || '';
+                        this.isOpen = true;
+                    }},
+                    close: function() {{
+                        this.isOpen = false;
+                        this.title = '';
+                    }},
+                    toggle: function() {{
+                        this.isOpen = !this.isOpen;
+                    }}
+                }});
+
+                {{# UI Store — toast from Alpine components #}}
+                Alpine.store('ui', {{
+                    toast: function(message, type, duration) {{
+                        if (typeof showToast === 'function') {{
+                            showToast(message, type || 'default', duration || 4000);
+                        }}
+                    }},
+                    success: function(message) {{ this.toast(message, 'success'); }},
+                    error: function(message) {{ this.toast(message, 'error', 5000); }}
+                }});
+            }});
+            </script>
+
+            {{# ================================================================== #}}
+            {{# HTMX — progress indicator, CSRF helper, script re-execution       #}}
+            {{# ================================================================== #}}
+            <script nonce="{{{{ csp_nonce }}}}">
+            document.addEventListener('DOMContentLoaded', function() {{
+                {{# Progress indicator — show/hide during HTMX requests #}}
+                document.body.addEventListener('htmx:beforeRequest', function() {{
+                    document.body.classList.add('htmx-request');
+                }});
+                document.body.addEventListener('htmx:afterRequest', function() {{
+                    document.body.classList.remove('htmx-request');
+                }});
+
+                {{# CSRF helper for manual fetch() calls #}}
+                window.getCsrfToken = function() {{
+                    var match = document.cookie.match(/(^|;\\s*)csrf_token=([^;]+)/);
+                    return match ? match[2] : '';
+                }};
+
+                {{# ============================================================ #}}
+                {{# Script re-execution after HTMX morph swap.                   #}}
+                {{# Idiomorph does NOT execute inline scripts — this handler      #}}
+                {{# re-executes them and reinitializes Alpine + Iconify.          #}}
+                {{# ============================================================ #}}
+                var _pageNonce = '{{{{ csp_nonce }}}}';
+                var _executedScripts = new WeakSet();
+
+                document.body.addEventListener('htmx:afterSettle', function(event) {{
+                    var target = event.detail.target;
+                    if (!target) return;
+
+                    var scripts = target.querySelectorAll('script:not([src])');
+                    var executed = 0;
+                    scripts.forEach(function(oldScript) {{
+                        if (_executedScripts.has(oldScript)) return;
+
+                        var newScript = document.createElement('script');
+                        newScript.nonce = _pageNonce;
+                        newScript.textContent = oldScript.textContent;
+
+                        Array.from(oldScript.attributes).forEach(function(attr) {{
+                            if (attr.name !== 'nonce' && attr.name !== 'type') {{
+                                newScript.setAttribute(attr.name, attr.value);
+                            }}
+                        }});
+
+                        oldScript.parentNode.replaceChild(newScript, oldScript);
+                        _executedScripts.add(newScript);
+                        executed++;
+                    }});
+
+                    {{# Re-initialize Alpine components after script re-execution #}}
+                    if (executed > 0 && typeof Alpine !== 'undefined') {{
+                        Promise.resolve().then(function() {{
+                            try {{
+                                Alpine.initTree(target);
+                            }} catch (e) {{
+                                console.warn('[HTMX] Alpine.initTree error:', e.message);
+                            }}
+                        }});
+                    }}
+
+                    {{# Re-scan for Iconify icons in swapped content #}}
+                    if (typeof Iconify !== 'undefined') {{
+                        Iconify.scan(target);
+                    }}
+                }});
+
+                {{# Update nav store when URL changes via HTMX #}}
+                document.body.addEventListener('htmx:pushedIntoHistory', function(event) {{
+                    if (typeof Alpine !== 'undefined' && Alpine.store('nav')) {{
+                        Alpine.store('nav').setPath(event.detail.path);
+                    }}
+                }});
+
+                window.addEventListener('popstate', function() {{
+                    if (typeof Alpine !== 'undefined' && Alpine.store('nav')) {{
+                        Alpine.store('nav').setPath(window.location.pathname);
+                    }}
+                }});
+            }});
+            </script>
         </body>
         </html>
-    '''))
+    """)
+    )
 
-    (shared_tpl / "index.html").write_text(dedent('''\
+    (shared_tpl / "index.html").write_text(
+        dedent("""\
         {% extends "shared/base.html" %}
 
         {% block content %}
@@ -329,15 +682,18 @@ def startproject(name: str) -> None:
         </ul>
         <p><small>Powered by <a href="https://github.com/ERPlora/hotframe">hotframe</a></small></p>
         {% endblock %}
-    '''))
+    """)
+    )
 
     (shared_tpl.parent / "errors").mkdir()
     for code, msg in [("404", "Page not found"), ("500", "Server error")]:
-        ((shared_tpl.parent / "errors") / f"{code}.html").write_text(dedent(f'''\
+        ((shared_tpl.parent / "errors") / f"{code}.html").write_text(
+            dedent(f"""\
             {{% extends "shared/base.html" %}}
             {{% block title %}}{code} - {msg}{{% endblock %}}
             {{% block content %}}<h1>{code}</h1><p>{msg}</p>{{% endblock %}}
-        '''))
+        """)
+        )
 
     # modules/ directory
     modules_dir = project_dir / "modules"
@@ -347,7 +703,8 @@ def startproject(name: str) -> None:
     tests_dir = project_dir / "tests"
     tests_dir.mkdir(exist_ok=True)
     (tests_dir / "__init__.py").write_text("")
-    (tests_dir / "conftest.py").write_text(dedent('''\
+    (tests_dir / "conftest.py").write_text(
+        dedent('''\
         """Shared test fixtures."""
         import pytest
 
@@ -365,7 +722,8 @@ def startproject(name: str) -> None:
             """Create a test database session."""
             async for session in test_db_session():
                 yield session
-    '''))
+    ''')
+    )
 
     typer.echo(f"Created project '{name}'")
     if name != project_dir.name or str(project_dir) != str(Path.cwd()):
@@ -376,6 +734,7 @@ def startproject(name: str) -> None:
 # ---------------------------------------------------------------------------
 # startapp
 # ---------------------------------------------------------------------------
+
 
 @app.command()
 def startapp(name: str) -> None:
@@ -389,7 +748,8 @@ def startapp(name: str) -> None:
 
     (app_dir / "__init__.py").write_text("")
 
-    (app_dir / "app.py").write_text(dedent(f'''\
+    (app_dir / "app.py").write_text(
+        dedent(f'''\
         from hotframe import AppConfig
 
 
@@ -399,27 +759,34 @@ def startapp(name: str) -> None:
 
             def ready(self):
                 pass
-    '''))
+    ''')
+    )
 
-    (app_dir / "models.py").write_text(dedent('''\
+    (app_dir / "models.py").write_text(
+        dedent('''\
         """SQLAlchemy models."""
         from hotframe import Base
         # Define your models here
-    '''))
+    ''')
+    )
 
-    (app_dir / "routes.py").write_text(dedent(f'''\
+    (app_dir / "routes.py").write_text(
+        dedent(f'''\
         """HTMX views."""
         from fastapi import APIRouter
 
         router = APIRouter(prefix="/{name}", tags=["{name}"])
-    '''))
+    ''')
+    )
 
-    (app_dir / "api.py").write_text(dedent(f'''\
+    (app_dir / "api.py").write_text(
+        dedent(f'''\
         """REST API endpoints."""
         from fastapi import APIRouter
 
         api_router = APIRouter(prefix="/api/v1/{name}", tags=["{name}"])
-    '''))
+    ''')
+    )
 
     templates_dir = app_dir / "templates" / name
     templates_dir.mkdir(parents=True)
@@ -439,6 +806,7 @@ def startapp(name: str) -> None:
 # ---------------------------------------------------------------------------
 # startmodule
 # ---------------------------------------------------------------------------
+
 
 @app.command()
 def startmodule(
@@ -469,7 +837,8 @@ def startmodule(
     (mod_dir / "__init__.py").write_text("")
 
     # module.py
-    (mod_dir / "module.py").write_text(dedent(f'''\
+    (mod_dir / "module.py").write_text(
+        dedent(f'''\
         from hotframe import ModuleConfig
 
 
@@ -491,18 +860,22 @@ def startmodule(
 
             async def uninstall(self, ctx) -> None:
                 pass
-    '''))
+    ''')
+    )
 
     # models.py
-    (mod_dir / "models.py").write_text(dedent('''\
+    (mod_dir / "models.py").write_text(
+        dedent('''\
         """SQLAlchemy models."""
         from hotframe import Base
         # Define your models here
-    '''))
+    ''')
+    )
 
     # routes.py (views)
     if has_views:
-        (mod_dir / "routes.py").write_text(dedent(f'''\
+        (mod_dir / "routes.py").write_text(
+            dedent(f'''\
             """HTMX views for {verbose}."""
             from fastapi import APIRouter, Request
             from fastapi.responses import HTMLResponse
@@ -519,14 +892,16 @@ def startmodule(
                         "module_name": "{verbose}",
                     }},
                 )
-        '''))
+        ''')
+        )
 
         # Template
         templates_dir = mod_dir / "templates" / name
         templates_dir.mkdir(parents=True)
         (templates_dir / "pages").mkdir()
         (templates_dir / "partials").mkdir()
-        (templates_dir / "pages" / "index.html").write_text(dedent(f'''\
+        (templates_dir / "pages" / "index.html").write_text(
+            dedent(f"""\
             {{% extends "shared/base.html" %}}
             {{% block title %}}{verbose}{{% endblock %}}
             {{% block content %}}
@@ -534,11 +909,13 @@ def startmodule(
             <p>Module <strong>{name}</strong> is installed and running.</p>
             <p><a href="/">&larr; Home</a></p>
             {{% endblock %}}
-        '''))
+        """)
+        )
 
     # api.py
     if has_api:
-        (mod_dir / "api.py").write_text(dedent(f'''\
+        (mod_dir / "api.py").write_text(
+            dedent(f'''\
             """REST API for {verbose}."""
             from fastapi import APIRouter
 
@@ -549,7 +926,8 @@ def startmodule(
             async def list_items():
                 """List items."""
                 return {{"module": "{name}", "items": []}}
-        '''))
+        ''')
+        )
 
     # migrations/
     migrations_dir = mod_dir / "migrations"
@@ -607,10 +985,15 @@ def modules_list() -> None:
 
         try:
             import importlib
+
             mod = importlib.import_module(f"modules.{name}.module")
             for attr_name in dir(mod):
                 attr = getattr(mod, attr_name)
-                if isinstance(attr, type) and hasattr(attr, "name") and getattr(attr, "name", None) == name:
+                if (
+                    isinstance(attr, type)
+                    and hasattr(attr, "name")
+                    and getattr(attr, "name", None) == name
+                ):
                     version = getattr(attr, "version", "")
                     has_views = "yes" if getattr(attr, "has_views", True) else "no"
                     has_api = "yes" if getattr(attr, "has_api", True) else "no"
@@ -643,7 +1026,9 @@ def modules_install(source: str) -> None:
         bus = AsyncEventBus()
         hooks = HookRegistry()
         slots = SlotRegistry()
-        runtime = ModuleRuntime(app=None, settings=settings, event_bus=bus, hooks=hooks, slots=slots)
+        runtime = ModuleRuntime(
+            app=None, settings=settings, event_bus=bus, hooks=hooks, slots=slots
+        )
 
         # For CLI without DB, just do a simple filesystem install
         # Create tables directly
@@ -680,11 +1065,19 @@ def modules_update(source: str) -> None:
         from hotframe.templating.slots import SlotRegistry
 
         settings = get_settings()
-        runtime = ModuleRuntime(app=None, settings=settings, event_bus=AsyncEventBus(), hooks=HookRegistry(), slots=SlotRegistry())
+        runtime = ModuleRuntime(
+            app=None,
+            settings=settings,
+            event_bus=AsyncEventBus(),
+            hooks=HookRegistry(),
+            slots=SlotRegistry(),
+        )
 
         factory = get_session_factory()
         async with factory() as session:
-            result = await runtime.update(session, hub_id=None, module_id=source, new_version=None, source=source)
+            result = await runtime.update(
+                session, hub_id=None, module_id=source, new_version=None, source=source
+            )
             if result.success:
                 typer.echo(f"OK: Module '{result.module_id}' updated to v{result.to_version}")
             else:
@@ -693,6 +1086,7 @@ def modules_update(source: str) -> None:
             await session.commit()
 
         from hotframe.config.database import dispose_engine
+
         await dispose_engine()
 
     asyncio.run(_update())
@@ -712,7 +1106,13 @@ def modules_activate(name: str) -> None:
         from hotframe.templating.slots import SlotRegistry
 
         settings = get_settings()
-        runtime = ModuleRuntime(app=None, settings=settings, event_bus=AsyncEventBus(), hooks=HookRegistry(), slots=SlotRegistry())
+        runtime = ModuleRuntime(
+            app=None,
+            settings=settings,
+            event_bus=AsyncEventBus(),
+            hooks=HookRegistry(),
+            slots=SlotRegistry(),
+        )
 
         factory = get_session_factory()
         async with factory() as session:
@@ -725,6 +1125,7 @@ def modules_activate(name: str) -> None:
             await session.commit()
 
         from hotframe.config.database import dispose_engine
+
         await dispose_engine()
 
     asyncio.run(_activate())
@@ -744,7 +1145,13 @@ def modules_deactivate(name: str) -> None:
         from hotframe.templating.slots import SlotRegistry
 
         settings = get_settings()
-        runtime = ModuleRuntime(app=None, settings=settings, event_bus=AsyncEventBus(), hooks=HookRegistry(), slots=SlotRegistry())
+        runtime = ModuleRuntime(
+            app=None,
+            settings=settings,
+            event_bus=AsyncEventBus(),
+            hooks=HookRegistry(),
+            slots=SlotRegistry(),
+        )
 
         factory = get_session_factory()
         async with factory() as session:
@@ -757,6 +1164,7 @@ def modules_deactivate(name: str) -> None:
             await session.commit()
 
         from hotframe.config.database import dispose_engine
+
         await dispose_engine()
 
     asyncio.run(_deactivate())
@@ -789,7 +1197,13 @@ def modules_uninstall(
         from hotframe.templating.slots import SlotRegistry
 
         settings = get_settings()
-        runtime = ModuleRuntime(app=None, settings=settings, event_bus=AsyncEventBus(), hooks=HookRegistry(), slots=SlotRegistry())
+        runtime = ModuleRuntime(
+            app=None,
+            settings=settings,
+            event_bus=AsyncEventBus(),
+            hooks=HookRegistry(),
+            slots=SlotRegistry(),
+        )
 
         factory = get_session_factory()
         async with factory() as session:
@@ -802,6 +1216,7 @@ def modules_uninstall(
             await session.commit()
 
         from hotframe.config.database import dispose_engine
+
         await dispose_engine()
 
     asyncio.run(_uninstall())
@@ -810,6 +1225,7 @@ def modules_uninstall(
 # ---------------------------------------------------------------------------
 # runserver
 # ---------------------------------------------------------------------------
+
 
 @app.command()
 def runserver(
@@ -840,6 +1256,7 @@ def runserver(
 # migrate
 # ---------------------------------------------------------------------------
 
+
 @app.command()
 def migrate() -> None:
     """Run database migrations (Alembic upgrade head)."""
@@ -859,6 +1276,7 @@ def migrate() -> None:
 # ---------------------------------------------------------------------------
 # makemigrations
 # ---------------------------------------------------------------------------
+
 
 @app.command()
 def makemigrations(message: str = "auto") -> None:

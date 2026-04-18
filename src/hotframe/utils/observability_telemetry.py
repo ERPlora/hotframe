@@ -84,9 +84,7 @@ def setup_telemetry(
             )
     elif debug:
         # Dev mode: console exporter for visibility
-        provider.add_span_processor(
-            BatchSpanProcessor(ConsoleSpanExporter())
-        )
+        provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
         logger.info("OpenTelemetry console trace exporter configured (dev mode)")
 
     # Set global provider
@@ -178,6 +176,7 @@ def _auto_instrument_httpx() -> None:
 # -----------------------------------------------------------------------
 # Span helpers
 # -----------------------------------------------------------------------
+
 
 def get_tracer() -> Tracer:
     """Return the Hub tracer. Falls back to a no-op tracer if not configured."""

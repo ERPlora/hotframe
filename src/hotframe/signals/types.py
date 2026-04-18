@@ -169,10 +169,7 @@ class EventRegistry:
 
     def list_schemas(self) -> dict[str, dict[str, Any]]:
         """Return JSON schemas for all registered event types."""
-        return {
-            name: cls.model_json_schema()
-            for name, cls in self._by_name.items()
-        }
+        return {name: cls.model_json_schema() for name, cls in self._by_name.items()}
 
     def clear(self) -> None:
         """Remove all registrations. Intended for testing."""

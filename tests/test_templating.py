@@ -1,4 +1,5 @@
 """Tests for hotframe.templating."""
+
 import pytest
 from markupsafe import Markup
 

@@ -166,9 +166,7 @@ class HotMountPipeline:
                 after marking the pipeline as ``ERROR``.
         """
         if phase_name not in self.PHASES:
-            raise ValueError(
-                f"Unknown phase {phase_name!r}; valid phases: {self.PHASES}"
-            )
+            raise ValueError(f"Unknown phase {phase_name!r}; valid phases: {self.PHASES}")
 
         self._state.current_phase = phase_name
         self._state.status = PhaseStatus.RUNNING

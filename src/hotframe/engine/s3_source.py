@@ -64,13 +64,13 @@ class S3ModuleSource:
         self.cache_dir = cache_dir
         if region is None:
             from hotframe.config.settings import get_settings
+
             region = get_settings().AWS_REGION
         self.region = region
         self._etag_cache: dict[str, str] = {}
         if aioboto3 is None:
             raise ImportError(
-                "aioboto3 is required for S3ModuleSource. "
-                "Install it with: pip install aioboto3"
+                "aioboto3 is required for S3ModuleSource. Install it with: pip install aioboto3"
             )
         self._session = aioboto3.Session()
 
@@ -108,12 +108,16 @@ class S3ModuleSource:
                 current_etag = await self._get_object_etag(object_key)
                 if current_etag and cached_etag == current_etag:
                     logger.debug(
-                        "Cache hit for %s v%s (ETag match)", module_id, version,
+                        "Cache hit for %s v%s (ETag match)",
+                        module_id,
+                        version,
                     )
                     return local_path
 
         # Download
-        logger.info("Downloading %s v%s from s3://%s/%s", module_id, version, self.bucket, object_key)
+        logger.info(
+            "Downloading %s v%s from s3://%s/%s", module_id, version, self.bucket, object_key
+        )
         data = await self._download_object(object_key)
 
         # Verify SHA256
@@ -150,7 +154,9 @@ class S3ModuleSource:
         results: dict[str, Path] = {}
 
         async def _download_one(
-            module_id: str, version: str, sha256: str,
+            module_id: str,
+            version: str,
+            sha256: str,
         ) -> tuple[str, Path | None]:
             try:
                 path = await self.download(module_id, version, sha256)
@@ -159,10 +165,7 @@ class S3ModuleSource:
                 logger.exception("Failed to download %s v%s", module_id, version)
                 return module_id, None
 
-        tasks = [
-            _download_one(mid, ver, sha)
-            for mid, ver, sha in modules
-        ]
+        tasks = [_download_one(mid, ver, sha) for mid, ver, sha in modules]
         completed = await asyncio.gather(*tasks)
 
         for module_id, path in completed:
@@ -179,7 +182,8 @@ class S3ModuleSource:
         """Get the ETag for an S3 object (HEAD request)."""
         try:
             async with self._session.client(
-                "s3", region_name=self.region,
+                "s3",
+                region_name=self.region,
             ) as s3:
                 response = await s3.head_object(Bucket=self.bucket, Key=object_key)
                 return response.get("ETag", "").strip('"')
@@ -193,17 +197,21 @@ class S3ModuleSource:
         for attempt in range(max_retries):
             try:
                 async with self._session.client(
-                    "s3", region_name=self.region,
+                    "s3",
+                    region_name=self.region,
                 ) as s3:
                     response = await s3.get_object(Bucket=self.bucket, Key=object_key)
                     return await response["Body"].read()
             except Exception as e:
                 if attempt == max_retries - 1:
                     raise
-                delay = 2 ** attempt  # 1, 2, 4 seconds
+                delay = 2**attempt  # 1, 2, 4 seconds
                 logger.warning(
                     "S3 download failed (attempt %d/%d), retrying in %ds: %s",
-                    attempt + 1, max_retries, delay, e,
+                    attempt + 1,
+                    max_retries,
+                    delay,
+                    e,
                 )
                 await asyncio.sleep(delay)
         # Unreachable, but satisfies type checker
@@ -218,8 +226,7 @@ class S3ModuleSource:
         actual = hashlib.sha256(data).hexdigest()
         if actual != expected:
             raise IntegrityError(
-                f"SHA256 mismatch for {module_id}: "
-                f"expected {expected}, got {actual}"
+                f"SHA256 mismatch for {module_id}: expected {expected}, got {actual}"
             )
 
     @staticmethod
@@ -255,7 +262,7 @@ class S3ModuleSource:
                         continue
                     # Strip common prefix to flatten (e.g. assistant/module.py → module.py)
                     if prefix and info.filename.startswith(prefix):
-                        info.filename = info.filename[len(prefix):]
+                        info.filename = info.filename[len(prefix) :]
                         if not info.filename:
                             continue
                     zf.extract(info, path=target)
@@ -267,7 +274,8 @@ class S3ModuleSource:
                 for member in tar.getmembers():
                     if member.name.startswith("/") or ".." in member.name:
                         logger.warning(
-                            "Skipping unsafe tar member: %s", member.name,
+                            "Skipping unsafe tar member: %s",
+                            member.name,
                         )
                         continue
                     safe_members.append(member)

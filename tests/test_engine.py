@@ -1,4 +1,5 @@
 """Tests for hotframe.engine."""
+
 from hotframe.engine.dependency import (
     DependencyManager,
     _parse_dep,

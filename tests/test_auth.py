@@ -1,4 +1,5 @@
 """Tests for hotframe.auth."""
+
 from hotframe.auth.auth import hash_password, verify_password
 from hotframe.auth.crypto import generate_key
 from hotframe.auth.permissions import has_permission

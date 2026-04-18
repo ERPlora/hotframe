@@ -65,7 +65,9 @@ class MarketplaceClient:
         self.timeout = timeout
 
     async def resolve(
-        self, module_id: str, version: str | None = None,
+        self,
+        module_id: str,
+        version: str | None = None,
     ) -> ModuleDownloadInfo:
         """Resolve a module from the marketplace.
 
@@ -88,14 +90,10 @@ class MarketplaceClient:
             try:
                 response = await client.get(url, params=params)
             except httpx.RequestError as exc:
-                raise MarketplaceError(
-                    f"Failed to connect to marketplace: {exc}"
-                ) from exc
+                raise MarketplaceError(f"Failed to connect to marketplace: {exc}") from exc
 
             if response.status_code == 404:
-                raise MarketplaceError(
-                    f"Module '{module_id}' not found in marketplace"
-                )
+                raise MarketplaceError(f"Module '{module_id}' not found in marketplace")
             if response.status_code != 200:
                 raise MarketplaceError(
                     f"Marketplace error {response.status_code}: {response.text[:200]}"
@@ -145,9 +143,7 @@ class MarketplaceClient:
                     raise MarketplaceError(f"Download failed: {exc}") from exc
 
                 if response.status_code != 200:
-                    raise MarketplaceError(
-                        f"Download failed: HTTP {response.status_code}"
-                    )
+                    raise MarketplaceError(f"Download failed: HTTP {response.status_code}")
 
                 tmp_path.write_bytes(response.content)
 
@@ -208,7 +204,14 @@ class MarketplaceClient:
             all_modules[mid] = info
 
             for dep_spec in info.dependencies:
-                dep_id = dep_spec.split(">=")[0].split("==")[0].split("<=")[0].split(">")[0].split("<")[0].strip()
+                dep_id = (
+                    dep_spec.split(">=")[0]
+                    .split("==")[0]
+                    .split("<=")[0]
+                    .split(">")[0]
+                    .split("<")[0]
+                    .strip()
+                )
                 if dep_id not in visited and dep_id not in installed:
                     queue.append((dep_id, None))
 
@@ -222,8 +225,7 @@ class MarketplaceClient:
             ready = []
             for mid in remaining:
                 deps = [
-                    d.split(">=")[0].split("==")[0].strip()
-                    for d in all_modules[mid].dependencies
+                    d.split(">=")[0].split("==")[0].strip() for d in all_modules[mid].dependencies
                 ]
                 unresolved = [d for d in deps if d in remaining and d != mid]
                 if not unresolved:

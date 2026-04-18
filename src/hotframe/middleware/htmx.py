@@ -48,7 +48,8 @@ class HtmxMiddleware(BaseHTTPMiddleware):
             trigger=request.headers.get("HX-Trigger"),
             trigger_name=request.headers.get("HX-Trigger-Name"),
             boosted=request.headers.get("HX-Boosted", "").lower() == "true",
-            history_restore_request=request.headers.get("HX-History-Restore-Request", "").lower() == "true",
+            history_restore_request=request.headers.get("HX-History-Restore-Request", "").lower()
+            == "true",
             current_url=request.headers.get("HX-Current-URL"),
             prompt=request.headers.get("HX-Prompt"),
         )

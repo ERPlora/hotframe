@@ -31,6 +31,7 @@ def _get_module_model() -> type:
 
     # Fall back to built-in model
     from hotframe.engine.models import Module
+
     return Module
 
 
@@ -102,8 +103,11 @@ class ModuleStateDB:
         return module
 
     async def activate(
-        self, session: AsyncSession, module_id: str,
-        manifest_dict: dict[str, Any], **filters: Any,
+        self,
+        session: AsyncSession,
+        module_id: str,
+        manifest_dict: dict[str, Any],
+        **filters: Any,
     ) -> None:
         Model = self._model()
         now = datetime.now(UTC)
@@ -111,8 +115,11 @@ class ModuleStateDB:
         for key, value in filters.items():
             stmt = stmt.where(getattr(Model, key) == value)
         stmt = stmt.values(
-            status="active", activated_at=now, disabled_at=None,
-            manifest=manifest_dict, error_message=None,
+            status="active",
+            activated_at=now,
+            disabled_at=None,
+            manifest=manifest_dict,
+            error_message=None,
         )
         await session.execute(stmt)
         logger.info("Activated module %s", module_id)
@@ -128,8 +135,12 @@ class ModuleStateDB:
         logger.info("Deactivated module %s", module_id)
 
     async def set_status(
-        self, session: AsyncSession, module_id: str,
-        status: str, error: str | None = None, **filters: Any,
+        self,
+        session: AsyncSession,
+        module_id: str,
+        status: str,
+        error: str | None = None,
+        **filters: Any,
     ) -> None:
         Model = self._model()
         values: dict[str, Any] = {"status": status}
@@ -148,15 +159,21 @@ class ModuleStateDB:
         await session.execute(stmt)
 
     async def set_error(
-        self, session: AsyncSession, module_id: str,
-        error_message: str, **filters: Any,
+        self,
+        session: AsyncSession,
+        module_id: str,
+        error_message: str,
+        **filters: Any,
     ) -> None:
         await self.set_status(session, module_id, "error", error=error_message, **filters)
         logger.error("Module %s error: %s", module_id, error_message)
 
     async def update_manifest(
-        self, session: AsyncSession, module_id: str,
-        manifest_dict: dict[str, Any], **filters: Any,
+        self,
+        session: AsyncSession,
+        module_id: str,
+        manifest_dict: dict[str, Any],
+        **filters: Any,
     ) -> None:
         Model = self._model()
         stmt = update(Model).where(Model.module_id == module_id)

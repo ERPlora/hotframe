@@ -1,4 +1,5 @@
 """Tests for hotframe.testing utilities."""
+
 import pytest
 
 from hotframe.testing import FakeEventBus, FakeHookRegistry

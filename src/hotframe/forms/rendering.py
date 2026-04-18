@@ -97,10 +97,7 @@ class FormRenderer:
         error_class = " input-error" if error else ""
         req_attr = " required" if required else ""
 
-        label_html = (
-            f'<label for="id_{escaped_name}" class="label">'
-            f"{display_label}</label>"
-        )
+        label_html = f'<label for="id_{escaped_name}" class="label">{display_label}</label>'
         input_html = (
             f'<input type="{escape(field_type)}" '
             f'id="id_{escaped_name}" '
@@ -112,15 +109,9 @@ class FormRenderer:
         )
         error_html = ""
         if error:
-            error_html = (
-                f'<p class="text-error text-sm mt-1">{escape(error)}</p>'
-            )
+            error_html = f'<p class="text-error text-sm mt-1">{escape(error)}</p>'
 
-        return Markup(
-            f'<div class="form-group mb-4">'
-            f"{label_html}{input_html}{error_html}"
-            f"</div>"
-        )
+        return Markup(f'<div class="form-group mb-4">{label_html}{input_html}{error_html}</div>')
 
     @staticmethod
     def render_textarea(
@@ -145,12 +136,9 @@ class FormRenderer:
         error_class = " textarea-error" if error else ""
         req_attr = " required" if required else ""
 
-        label_html = (
-            f'<label for="id_{escaped_name}" class="label">'
-            f"{display_label}</label>"
-        )
+        label_html = f'<label for="id_{escaped_name}" class="label">{display_label}</label>'
         textarea_html = (
-            f'<textarea '
+            f"<textarea "
             f'id="id_{escaped_name}" '
             f'name="{escaped_name}" '
             f'placeholder="{escaped_placeholder}" '
@@ -161,15 +149,9 @@ class FormRenderer:
         )
         error_html = ""
         if error:
-            error_html = (
-                f'<p class="text-error text-sm mt-1">{escape(error)}</p>'
-            )
+            error_html = f'<p class="text-error text-sm mt-1">{escape(error)}</p>'
 
-        return Markup(
-            f'<div class="form-group mb-4">'
-            f"{label_html}{textarea_html}{error_html}"
-            f"</div>"
-        )
+        return Markup(f'<div class="form-group mb-4">{label_html}{textarea_html}{error_html}</div>')
 
     @staticmethod
     def render_select(
@@ -198,32 +180,20 @@ class FormRenderer:
         error_class = " select-error" if error else ""
         req_attr = " required" if required else ""
 
-        label_html = (
-            f'<label for="id_{escaped_name}" class="label">'
-            f"{display_label}</label>"
-        )
+        label_html = f'<label for="id_{escaped_name}" class="label">{display_label}</label>'
 
         opts = []
         for opt_val, opt_text in options:
             selected = " selected" if opt_val == value else ""
-            opts.append(
-                f'<option value="{escape(opt_val)}"{selected}>'
-                f"{escape(opt_text)}</option>"
-            )
+            opts.append(f'<option value="{escape(opt_val)}"{selected}>{escape(opt_text)}</option>')
 
         select_html = (
             f'<select id="id_{escaped_name}" name="{escaped_name}" '
             f'class="{escape(css_class)}{error_class}"{req_attr}>'
-            f'{"".join(opts)}</select>'
+            f"{''.join(opts)}</select>"
         )
         error_html = ""
         if error:
-            error_html = (
-                f'<p class="text-error text-sm mt-1">{escape(error)}</p>'
-            )
+            error_html = f'<p class="text-error text-sm mt-1">{escape(error)}</p>'
 
-        return Markup(
-            f'<div class="form-group mb-4">'
-            f"{label_html}{select_html}{error_html}"
-            f"</div>"
-        )
+        return Markup(f'<div class="form-group mb-4">{label_html}{select_html}{error_html}</div>')

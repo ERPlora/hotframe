@@ -160,9 +160,7 @@ class ImportManager:
         """
         with self._lock:
             if module_id in self._bundles:
-                raise ValueError(
-                    f"module_id={module_id!r} already imported; purge first"
-                )
+                raise ValueError(f"module_id={module_id!r} already imported; purge first")
 
             parent_dir = str(base_path.parent.resolve())
             inserted_on_path = False
@@ -228,10 +226,7 @@ class ImportManager:
         with self._lock:
             bundle = self._bundles.get(module_id)
             if bundle is None:
-                raise KeyError(
-                    f"module_id={module_id!r} not registered; "
-                    "call import_package first"
-                )
+                raise KeyError(f"module_id={module_id!r} not registered; call import_package first")
 
             try:
                 ref = weakref.ref(cls)

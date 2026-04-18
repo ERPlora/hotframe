@@ -18,15 +18,16 @@ from threading import Lock
 
 # Escalating thresholds: (attempt_count, lockout_seconds | None for permanent)
 THRESHOLDS: list[tuple[int, int | None]] = [
-    (5, 5 * 60),       # 5 attempts  -> 5 min
-    (10, 30 * 60),     # 10 attempts -> 30 min
-    (20, None),         # 20 attempts -> permanent
+    (5, 5 * 60),  # 5 attempts  -> 5 min
+    (10, 30 * 60),  # 10 attempts -> 30 min
+    (20, None),  # 20 attempts -> permanent
 ]
 
 
 @dataclass(slots=True)
 class _AttemptRecord:
     """Track failed attempts for a single device/IP."""
+
     attempts: int = 0
     locked_until: float | None = None  # Unix timestamp, None = permanent lock
     permanently_locked: bool = False
@@ -35,6 +36,7 @@ class _AttemptRecord:
 @dataclass
 class RateLimitResult:
     """Result of a rate limit check."""
+
     allowed: bool
     retry_after: int | None = None  # Seconds until unlock, None if permanent
 
@@ -59,7 +61,9 @@ class PINRateLimiter:
             return f"ip:{ip}"
         return "unknown"
 
-    def check_rate_limit(self, device_token: str | None = None, ip: str | None = None) -> RateLimitResult:
+    def check_rate_limit(
+        self, device_token: str | None = None, ip: str | None = None
+    ) -> RateLimitResult:
         """
         Check if an authentication attempt is allowed.
 
@@ -90,7 +94,9 @@ class PINRateLimiter:
 
         return RateLimitResult(allowed=True)
 
-    def record_failed_attempt(self, device_token: str | None = None, ip: str | None = None) -> RateLimitResult:
+    def record_failed_attempt(
+        self, device_token: str | None = None, ip: str | None = None
+    ) -> RateLimitResult:
         """
         Record a failed authentication attempt and apply lockout if threshold reached.
 
@@ -160,7 +166,12 @@ class PINRateLimiter:
         with self._lock:
             record = self._records.get(key)
             if record is None:
-                return {"attempts": 0, "locked": False, "permanently_locked": False, "retry_after": None}
+                return {
+                    "attempts": 0,
+                    "locked": False,
+                    "permanently_locked": False,
+                    "retry_after": None,
+                }
 
             retry_after: int | None = None
             locked = False

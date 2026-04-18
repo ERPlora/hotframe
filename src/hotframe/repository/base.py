@@ -140,7 +140,9 @@ class BaseRepository[T]:
         return await query.exists()
 
 
-def serialize(obj: Any, *, fields: list[str] | None = None, exclude: set[str] | None = None) -> dict[str, Any]:
+def serialize(
+    obj: Any, *, fields: list[str] | None = None, exclude: set[str] | None = None
+) -> dict[str, Any]:
     """
     Serialize an ORM object to a dict suitable for AI tool responses.
 

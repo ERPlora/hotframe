@@ -23,14 +23,19 @@ class Module(Base):
     __tablename__ = "hotframe_module"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        primary_key=True, default=uuid.uuid4,
+        primary_key=True,
+        default=uuid.uuid4,
     )
     module_id: Mapped[str] = mapped_column(
-        String(100), unique=True, index=True,
+        String(100),
+        unique=True,
+        index=True,
     )
     version: Mapped[str] = mapped_column(String(50), default="0.0.0")
     status: Mapped[str] = mapped_column(
-        String(20), default="installing", index=True,
+        String(20),
+        default="installing",
+        index=True,
     )
     checksum_sha256: Mapped[str] = mapped_column(String(64), default="")
     manifest: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -42,8 +47,10 @@ class Module(Base):
         default=lambda: datetime.now(UTC),
     )
     activated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     disabled_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )

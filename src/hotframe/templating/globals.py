@@ -22,18 +22,18 @@ logger = logging.getLogger(__name__)
 async def get_global_context(request: Request) -> dict[str, Any]:
     """Build the global context dict for a template render."""
     csrf_token = getattr(request.state, "csrf_token", "")
-    _csrf_markup = Markup(
-        f'<input type="hidden" name="csrf_token" value="{csrf_token}">'
-    ) if csrf_token else Markup("")
+    _csrf_markup = (
+        Markup(f'<input type="hidden" name="csrf_token" value="{csrf_token}">')
+        if csrf_token
+        else Markup("")
+    )
 
     context: dict[str, Any] = {
         "request": request,
         "csp_nonce": getattr(request.state, "csp_nonce", ""),
         "csrf_token": csrf_token,
         "csrf_input": lambda: _csrf_markup,
-        "is_htmx": getattr(
-            getattr(request.state, "htmx", None), "is_htmx", False
-        ),
+        "is_htmx": getattr(getattr(request.state, "htmx", None), "is_htmx", False),
         "debug": getattr(request.app.state, "debug", False),
         "current_path": request.url.path,
     }

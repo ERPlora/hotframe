@@ -1,4 +1,5 @@
 """Global test configuration."""
+
 import pytest
 
 from hotframe.config.settings import reset_settings

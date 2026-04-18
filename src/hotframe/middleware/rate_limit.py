@@ -48,10 +48,7 @@ class _SlidingWindow:
 
     def cleanup(self, max_age: float = 300.0) -> None:
         now = time.monotonic()
-        empty_keys = [
-            k for k, v in self._requests.items()
-            if not v or v[-1] < now - max_age
-        ]
+        empty_keys = [k for k, v in self._requests.items() if not v or v[-1] < now - max_age]
         for k in empty_keys:
             del self._requests[k]
 

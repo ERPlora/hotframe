@@ -181,6 +181,7 @@ class HubQuery[T]:
 
         # Model doesn't support soft delete — fall back to hard delete
         import logging
+
         _logger = logging.getLogger(__name__)
         _logger.warning(
             "Hard delete on %s (id=%s) — consider adding SoftDeleteMixin",

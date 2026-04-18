@@ -1,4 +1,5 @@
 """Tests for hotframe.middleware."""
+
 from hotframe.middleware.body_limit import BodyLimitMiddleware
 from hotframe.middleware.htmx import HtmxDetails, HtmxMiddleware
 from hotframe.middleware.timeout import TimeoutMiddleware
