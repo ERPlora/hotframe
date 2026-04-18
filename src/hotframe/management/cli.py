@@ -26,6 +26,37 @@ app = typer.Typer(
 )
 
 
+def _load_project_settings():
+    """Load the project's settings (not hotframe's defaults).
+
+    Tries to import ``settings`` from the project root (CWD/settings.py).
+    This ensures the CLI uses the project's DATABASE_URL, env_prefix, etc.
+    Falls back to hotframe's HotframeSettings if no project settings found.
+    """
+    import sys
+
+    cwd = str(Path.cwd())
+    if cwd not in sys.path:
+        sys.path.insert(0, cwd)
+
+    try:
+        import importlib
+
+        mod = importlib.import_module("settings")
+        project_settings = getattr(mod, "settings", None)
+        if project_settings is not None:
+            from hotframe.config.settings import set_settings
+
+            set_settings(project_settings)
+            return project_settings
+    except ImportError:
+        pass
+
+    from hotframe.config.settings import get_settings
+
+    return get_settings()
+
+
 # ---------------------------------------------------------------------------
 # startproject
 # ---------------------------------------------------------------------------
@@ -1045,14 +1076,13 @@ def modules_install(source: str) -> None:
 
     async def _install():
         from hotframe.config.database import get_engine, get_session_factory
-        from hotframe.config.settings import get_settings
         from hotframe.engine.module_runtime import ModuleRuntime
         from hotframe.models.base import Base
         from hotframe.signals.dispatcher import AsyncEventBus
         from hotframe.signals.hooks import HookRegistry
         from hotframe.templating.slots import SlotRegistry
 
-        settings = get_settings()
+        settings = _load_project_settings()
         bus = AsyncEventBus()
         hooks = HookRegistry()
         slots = SlotRegistry()
@@ -1088,13 +1118,12 @@ def modules_update(source: str) -> None:
 
     async def _update():
         from hotframe.config.database import get_session_factory
-        from hotframe.config.settings import get_settings
         from hotframe.engine.module_runtime import ModuleRuntime
         from hotframe.signals.dispatcher import AsyncEventBus
         from hotframe.signals.hooks import HookRegistry
         from hotframe.templating.slots import SlotRegistry
 
-        settings = get_settings()
+        settings = _load_project_settings()
         runtime = ModuleRuntime(
             app=None,
             settings=settings,
@@ -1129,13 +1158,12 @@ def modules_activate(name: str) -> None:
 
     async def _activate():
         from hotframe.config.database import get_session_factory
-        from hotframe.config.settings import get_settings
         from hotframe.engine.module_runtime import ModuleRuntime
         from hotframe.signals.dispatcher import AsyncEventBus
         from hotframe.signals.hooks import HookRegistry
         from hotframe.templating.slots import SlotRegistry
 
-        settings = get_settings()
+        settings = _load_project_settings()
         runtime = ModuleRuntime(
             app=None,
             settings=settings,
@@ -1168,13 +1196,12 @@ def modules_deactivate(name: str) -> None:
 
     async def _deactivate():
         from hotframe.config.database import get_session_factory
-        from hotframe.config.settings import get_settings
         from hotframe.engine.module_runtime import ModuleRuntime
         from hotframe.signals.dispatcher import AsyncEventBus
         from hotframe.signals.hooks import HookRegistry
         from hotframe.templating.slots import SlotRegistry
 
-        settings = get_settings()
+        settings = _load_project_settings()
         runtime = ModuleRuntime(
             app=None,
             settings=settings,
@@ -1220,13 +1247,12 @@ def modules_uninstall(
 
     async def _uninstall():
         from hotframe.config.database import get_session_factory
-        from hotframe.config.settings import get_settings
         from hotframe.engine.module_runtime import ModuleRuntime
         from hotframe.signals.dispatcher import AsyncEventBus
         from hotframe.signals.hooks import HookRegistry
         from hotframe.templating.slots import SlotRegistry
 
-        settings = get_settings()
+        settings = _load_project_settings()
         runtime = ModuleRuntime(
             app=None,
             settings=settings,
@@ -1307,10 +1333,9 @@ def migrate(
     import asyncio
 
     async def _migrate():
-        from hotframe.config.settings import get_settings
         from hotframe.migrations.runner import ModuleMigrationRunner
 
-        settings = get_settings()
+        settings = _load_project_settings()
         runner = ModuleMigrationRunner()
         db_url = runner.get_sync_db_url(settings.DATABASE_URL)
         cwd = Path.cwd()
@@ -1392,9 +1417,7 @@ def makemigrations(
         from alembic import command
         from alembic.config import Config
 
-        from hotframe.config.settings import get_settings
-
-        settings = get_settings()
+        settings = _load_project_settings()
         cwd = Path.cwd()
 
         # Find the app or module
