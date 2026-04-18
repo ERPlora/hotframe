@@ -47,6 +47,15 @@ class HotframeSettings(BaseSettings):
         extra="ignore",
     )
 
+    # --- Apps ---
+    # List of apps to load. Empty = auto-discover all from apps/.
+    # If set, only these apps load, in this order.
+    INSTALLED_APPS: list[str] = []
+
+    # Extra routers to mount (dotted paths to Router instances).
+    # Apps routers are auto-discovered; use this for standalone routers.
+    EXTRA_ROUTERS: list[str] = []
+
     # --- Database ---
     DATABASE_URL: str = "sqlite+aiosqlite:///./app.db"
     DB_POOL_SIZE: int = 10

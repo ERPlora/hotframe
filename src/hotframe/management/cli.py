@@ -55,11 +55,6 @@ def startproject(name: str) -> None:
         from settings import settings
 
         app = create_app(settings)
-
-        # Include app routers
-        from apps.shared.routes import router as shared_router
-
-        app.include_router(shared_router)
     '''))
 
     # asgi.py

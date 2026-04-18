@@ -163,6 +163,9 @@ def create_app(settings: HotframeSettings | None = None) -> FastAPI:
     async def health():
         return {"status": "ok"}
 
+    # --- Auto-discover app routers ---
+    _auto_discover_apps(app)
+
     # --- Media files (local dev only) ---
     if settings.MEDIA_STORAGE == "local" and settings.DEBUG:
         from pathlib import Path as _Path
@@ -206,3 +209,109 @@ def create_app(settings: HotframeSettings | None = None) -> FastAPI:
         )
 
     return app
+
+
+# ---------------------------------------------------------------------------
+# App auto-discovery
+# ---------------------------------------------------------------------------
+
+
+def _auto_discover_apps(app: FastAPI) -> None:
+    """Auto-discover and mount app routers from apps/ directory.
+
+    Scans ``apps/*/`` for ``routes.py`` (HTMX views) and ``api.py``
+    (REST API) and mounts any ``router`` / ``api_router`` found.
+
+    Also calls ``AppConfig.ready()`` if ``app.py`` defines one.
+
+    If ``settings.INSTALLED_APPS`` is set, only those apps are loaded
+    (in that order). Otherwise, all apps in ``apps/`` are loaded
+    alphabetically.
+    """
+    import importlib
+    from pathlib import Path
+
+    from hotframe.config.settings import get_settings
+
+    settings = get_settings()
+    apps_dir = Path.cwd() / "apps"
+
+    if not apps_dir.exists():
+        return
+
+    # Determine which apps to load
+    if settings.INSTALLED_APPS:
+        app_names = settings.INSTALLED_APPS
+    else:
+        app_names = sorted(
+            d.name
+            for d in apps_dir.iterdir()
+            if d.is_dir()
+            and not d.name.startswith((".", "_"))
+            and (d / "__init__.py").exists()
+        )
+
+    mounted = []
+
+    for name in app_names:
+        app_dir = apps_dir / name
+        if not app_dir.exists():
+            logger.warning("INSTALLED_APPS: app '%s' not found in apps/", name)
+            continue
+
+        # Mount views router (routes.py → router)
+        try:
+            mod = importlib.import_module(f"apps.{name}.routes")
+            router = getattr(mod, "router", None)
+            if router:
+                app.include_router(router)
+                mounted.append(name)
+        except ImportError:
+            pass
+        except Exception:
+            logger.exception("Failed to load routes for app '%s'", name)
+
+        # Mount API router (api.py → api_router)
+        try:
+            mod = importlib.import_module(f"apps.{name}.api")
+            api_router = getattr(mod, "api_router", None)
+            if api_router:
+                app.include_router(api_router)
+        except ImportError:
+            pass
+        except Exception:
+            logger.exception("Failed to load API for app '%s'", name)
+
+        # Call AppConfig.ready() if defined
+        try:
+            mod = importlib.import_module(f"apps.{name}.app")
+            for attr_name in dir(mod):
+                attr = getattr(mod, attr_name)
+                if (
+                    isinstance(attr, type)
+                    and hasattr(attr, "ready")
+                    and hasattr(attr, "name")
+                    and getattr(attr, "name", None) == name
+                ):
+                    config = attr()
+                    if callable(config.ready):
+                        config.ready()
+                    break
+        except ImportError:
+            pass
+        except Exception:
+            logger.exception("Failed to call ready() for app '%s'", name)
+
+    # Mount extra routers from settings
+    for dotted_path in settings.EXTRA_ROUTERS:
+        try:
+            module_path, attr_name = dotted_path.rsplit(".", 1)
+            mod = importlib.import_module(module_path)
+            router = getattr(mod, attr_name)
+            app.include_router(router)
+            mounted.append(f"extra:{dotted_path}")
+        except Exception:
+            logger.exception("Failed to load extra router: %s", dotted_path)
+
+    if mounted:
+        logger.info("Auto-discovered %d app(s): %s", len(mounted), ", ".join(mounted))

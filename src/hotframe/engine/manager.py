@@ -134,8 +134,21 @@ class ModuleManager:
         if name in self._state and self._state[name].status == "active":
             return Result(ok=False, message=f"Module '{name}' is already active", module=name)
 
-        # Step 1: Import models
+        # Step 1: Import models (clear stale metadata first)
         try:
+            from hotframe.models.base import Base as _Base
+
+            # Remove any stale table registrations from a previous import
+            stale = [t for t in _Base.metadata.tables if t.startswith(f"{name}_") or t == name]
+            for t in stale:
+                _Base.metadata.remove(_Base.metadata.tables[t])
+
+            # Clear cached module imports
+            import sys
+
+            for k in [k for k in sys.modules if k.startswith(f"modules.{name}")]:
+                del sys.modules[k]
+
             importlib.import_module(f"modules.{name}.models")
         except ImportError:
             pass  # No models is fine
