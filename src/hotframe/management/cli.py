@@ -821,6 +821,7 @@ def startapp(name: str) -> None:
     migrations_dir.mkdir()
     (migrations_dir / "versions").mkdir()
     (migrations_dir / "env.py").write_text(_generate_env_py(name))
+    (migrations_dir / "script.py.mako").write_text(_generate_script_mako())
 
     tests_dir = app_dir / "tests"
     tests_dir.mkdir()
@@ -960,6 +961,7 @@ def startmodule(
     migrations_dir.mkdir()
     (migrations_dir / "versions").mkdir()
     (migrations_dir / "env.py").write_text(_generate_env_py(name))
+    (migrations_dir / "script.py.mako").write_text(_generate_script_mako())
 
     # tests/
     tests_dir = mod_dir / "tests"
@@ -1413,11 +1415,16 @@ def makemigrations(
         migrations_dir.mkdir(exist_ok=True)
         versions_dir.mkdir(exist_ok=True)
 
-        # Create env.py if missing
+        # Create env.py and script.py.mako if missing
         env_py = migrations_dir / "env.py"
         if not env_py.exists():
             env_py.write_text(_generate_env_py(name))
             typer.echo(f"  Created {migrations_dir}/env.py")
+
+        mako = migrations_dir / "script.py.mako"
+        if not mako.exists():
+            mako.write_text(_generate_script_mako())
+            typer.echo(f"  Created {migrations_dir}/script.py.mako")
 
         # Build Alembic config programmatically
         db_url = settings.DATABASE_URL.replace("+asyncpg", "").replace("+aiosqlite", "")
@@ -1506,6 +1513,35 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
+'''
+
+
+def _generate_script_mako() -> str:
+    """Generate the Alembic script.py.mako template for migration files."""
+    return '''\
+"""${message}
+
+Revision ID: ${up_revision}
+Revises: ${down_revision | comma,n}
+Create Date: ${create_date}
+"""
+from alembic import op
+import sqlalchemy as sa
+${imports if imports else ""}
+
+# revision identifiers, used by Alembic.
+revision = ${repr(up_revision)}
+down_revision = ${repr(down_revision)}
+branch_labels = ${repr(branch_labels)}
+depends_on = ${repr(depends_on)}
+
+
+def upgrade() -> None:
+    ${upgrades if upgrades else "pass"}
+
+
+def downgrade() -> None:
+    ${downgrades if downgrades else "pass"}
 '''
 
 
