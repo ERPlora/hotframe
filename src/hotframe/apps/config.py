@@ -283,6 +283,8 @@ class ModuleConfig(AppConfig):
 
     requires_restart: bool = False
     is_system: bool = False
+    has_views: bool = True
+    has_api: bool = True
     s3_key: str | None = None
     sha256: str | None = None
 

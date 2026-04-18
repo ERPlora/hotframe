@@ -110,12 +110,45 @@ def create_template_engine(modules_dir: Path | None = None) -> Jinja2Templates:
 
     env.install_gettext_translations(get_translations())
 
-    templates = Jinja2Templates(env=env)
+    templates = _HotframeTemplates(env=env)
 
     logger.info(
         "Template engine created with %d search directories", len(template_dirs)
     )
     return templates
+
+
+class _HotframeTemplates(Jinja2Templates):
+    """Jinja2Templates subclass that auto-injects request-scoped context.
+
+    Every TemplateResponse automatically gets:
+    - csrf_token: the CSRF token from request.state
+    - csrf_input(): a callable that returns the hidden input HTML
+    - csp_nonce: the CSP nonce from request.state
+    """
+
+    def TemplateResponse(self, request, name, context=None, **kwargs):
+        if context is None:
+            context = {}
+        if "request" not in context:
+            context["request"] = request
+
+        # Auto-inject CSRF token
+        if "csrf_token" not in context:
+            from markupsafe import Markup
+
+            csrf_token = getattr(request.state, "csrf_token", "")
+            context["csrf_token"] = csrf_token
+            if "csrf_input" not in context:
+                context["csrf_input"] = lambda: Markup(
+                    f'<input type="hidden" name="csrf_token" value="{csrf_token}">'
+                ) if csrf_token else lambda: Markup("")
+
+        # Auto-inject CSP nonce
+        if "csp_nonce" not in context:
+            context["csp_nonce"] = getattr(request.state, "csp_nonce", "")
+
+        return super().TemplateResponse(request, name, context, **kwargs)
 
 
 def refresh_template_dirs(templates: Jinja2Templates, modules_dir: Path) -> None:

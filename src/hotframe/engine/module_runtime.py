@@ -137,11 +137,13 @@ class ModuleRuntime:
         self.registry = ModuleRegistry()
         self.loader = ModuleLoader(app, self.registry, event_bus, hooks, slots)
         self.state = ModuleStateDB()
-        self.s3 = S3ModuleSource(
-            bucket=settings.S3_MODULES_BUCKET,
-            cache_dir=settings.MODULES_CACHE_DIR,
-            region=settings.AWS_REGION,
-        )
+        self.s3 = None
+        if settings.MODULE_SOURCE == "s3" and settings.S3_MODULES_BUCKET:
+            self.s3 = S3ModuleSource(
+                bucket=settings.S3_MODULES_BUCKET,
+                cache_dir=settings.MODULES_CACHE_DIR,
+                region=settings.AWS_REGION,
+            )
         self.deps = DependencyManager()
         self.lifecycle = ModuleLifecycleManager()
         self.migrations = ModuleMigrationRunner()
@@ -176,8 +178,9 @@ class ModuleRuntime:
         """
         start = time.monotonic()
 
-        # 1. Restore ETag cache
-        self.s3.load_cached_etags()
+        # 1. Restore ETag cache (only if S3 source is configured)
+        if self.s3 is not None:
+            self.s3.load_cached_etags()
 
         # 2. Query active modules
         active_modules = await self.state.get_active_modules(session, hub_id)

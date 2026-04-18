@@ -73,6 +73,7 @@ class HotframeSettings(BaseSettings):
 
     # --- Module storage ---
     MODULE_SOURCE: str = "filesystem"  # "filesystem", "s3", "http"
+    MODULE_MARKETPLACE_URL: str = ""  # e.g. "https://marketplace.example.com/modules"
     S3_MODULES_BUCKET: str = ""
     AWS_REGION: str = "us-east-1"
 
