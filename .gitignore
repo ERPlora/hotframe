@@ -73,3 +73,5 @@ dmypy.json
 *.pem
 *.key
 secrets.yaml
+*.db
+uv.lock
