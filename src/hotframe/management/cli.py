@@ -181,7 +181,7 @@ def startproject(name: str) -> None:
     '''))
 
     (shared_dir / "routes.py").write_text(dedent('''\
-        """Shared routes — welcome page and base endpoints."""
+        """Shared routes — index page and base endpoints."""
         from fastapi import APIRouter, Request
         from fastapi.responses import HTMLResponse
 
@@ -189,12 +189,12 @@ def startproject(name: str) -> None:
 
 
         @router.get("/", response_class=HTMLResponse)
-        async def welcome(request: Request):
-            """Welcome page — proves the app is running."""
+        async def index(request: Request):
+            """Index page — proves the app is running."""
             templates = getattr(request.app.state, "templates", None)
             if templates:
                 return templates.TemplateResponse(
-                    request, "shared/welcome.html",
+                    request, "shared/index.html",
                     {"request": request, "app_title": request.app.title},
                 )
             return HTMLResponse(
@@ -226,7 +226,7 @@ def startproject(name: str) -> None:
         </html>
     '''))
 
-    (shared_tpl / "welcome.html").write_text(dedent('''\
+    (shared_tpl / "index.html").write_text(dedent('''\
         {% extends "shared/base.html" %}
 
         {% block content %}
