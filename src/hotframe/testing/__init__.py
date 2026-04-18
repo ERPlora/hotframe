@@ -141,12 +141,15 @@ class FakeEventBus:
         self.typed_events: list[Any] = []
 
     async def emit(self, event_name: str, data: Any = None, **kwargs: Any) -> None:
+        """Record an emitted event by name and data."""
         self.events.append((event_name, data))
 
     async def emit_typed(self, event: Any) -> None:
+        """Record a typed event object."""
         self.typed_events.append(event)
 
     def reset(self) -> None:
+        """Clear all recorded events."""
         self.events.clear()
         self.typed_events.clear()
 
@@ -159,16 +162,20 @@ class FakeHookRegistry:
         self._filters: dict[str, list] = {}
 
     async def do_action(self, name: str, *args: Any, **kwargs: Any) -> None:
+        """Invoke all registered action handlers for the given hook name."""
         for fn in self._actions.get(name, []):
             await fn(*args, **kwargs)
 
     async def apply_filters(self, name: str, value: Any, *args: Any, **kwargs: Any) -> Any:
+        """Pass value through all registered filter handlers for the given hook name."""
         for fn in self._filters.get(name, []):
             value = await fn(value, *args, **kwargs)
         return value
 
     def add_action(self, name: str, fn: Any, priority: int = 10) -> None:
+        """Register an action handler for the given hook name."""
         self._actions.setdefault(name, []).append(fn)
 
     def add_filter(self, name: str, fn: Any, priority: int = 10) -> None:
+        """Register a filter handler for the given hook name."""
         self._filters.setdefault(name, []).append(fn)

@@ -51,6 +51,7 @@ class BaseRepository[T]:
         self.default_order = default_order
 
     def q(self) -> HubQuery[T]:
+        """Create a HubQuery for the repository's model."""
         return HubQuery(self.model, self.db, self.hub_id)
 
     async def list(
@@ -100,18 +101,21 @@ class BaseRepository[T]:
         return {"items": items, "total": total}
 
     async def get(self, id: UUID, *, options: list[Any] | None = None) -> T | None:
+        """Get a single record by primary key."""
         query = self.q()
         if options:
             query = query.options(*options)
         return await query.get(id)
 
     async def create(self, **kwargs: Any) -> T:
+        """Create a new record."""
         instance = self.model(hub_id=self.hub_id, **kwargs)
         self.db.add(instance)
         await self.db.flush()
         return instance
 
     async def update(self, id: UUID, **kwargs: Any) -> T | None:
+        """Update a record by primary key."""
         instance = await self.get(id)
         if instance is None:
             return None
@@ -122,12 +126,15 @@ class BaseRepository[T]:
         return instance
 
     async def delete(self, id: UUID) -> bool:
+        """Soft-delete a record by primary key."""
         return await self.q().delete(id)
 
     async def hard_delete(self, id: UUID) -> bool:
+        """Permanently delete a record by primary key."""
         return await self.q().hard_delete(id)
 
     async def count(self, **filters: Any) -> int:
+        """Return the count of matching records."""
         query = self.q()
         for field, value in filters.items():
             if hasattr(self.model, field) and value is not None:
@@ -135,6 +142,7 @@ class BaseRepository[T]:
         return await query.count()
 
     async def exists(self, **filters: Any) -> bool:
+        """Return True if any matching record exists."""
         query = self.q()
         for field, value in filters.items():
             if hasattr(self.model, field) and value is not None:

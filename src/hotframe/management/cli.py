@@ -143,11 +143,30 @@ def startproject(name: str) -> None:
 
             # -----------------------------------------------------------------
             # CSP (Content Security Policy)
+            #
+            # CSP_ENFORCE = False (default): report-only mode, logs violations
+            # CSP_ENFORCE = True: blocks any resource not explicitly allowed
+            #
+            # CSP_TRUSTED_TYPES = True (default): enables Trusted Types policy
+            # in the CSP header and renders the JS policy in base.html so that
+            # HTMX and Alpine.js work under Trusted Types enforcement.
+            #
+            # CSP_ALLOWED_SOURCES: allow-list of external domains per resource
+            # type. The example below shows the CDNs used by base.html. Add
+            # your own domains as needed (S3 buckets, Google Fonts, Stripe...).
             # -----------------------------------------------------------------
             # CSP_ENFORCE: bool = False
-            # CSP_EXTRA_SCRIPT_SRC: list[str] = []
-            # CSP_EXTRA_STYLE_SRC: list[str] = []
-            # CSP_EXTRA_CONNECT_SRC: list[str] = []
+            # CSP_TRUSTED_TYPES: bool = True
+            # CSP_ALLOWED_SOURCES: dict[str, list[str]] = {{
+            #     "script": [                         # <script src="...">
+            #         "https://unpkg.com",            # HTMX, Alpine.js
+            #         "https://cdn.jsdelivr.net",     # Iconify
+            #     ],
+            #     "style": [],                        # <link rel="stylesheet">
+            #     "connect": [],                      # fetch(), WebSocket
+            #     "img": [],                          # <img src="...">
+            #     "font": [],                         # @font-face
+            # }}
 
             # -----------------------------------------------------------------
             # Modules
@@ -335,7 +354,11 @@ def startproject(name: str) -> None:
 
             {{# ================================================================== #}}
             {{# Trusted Types policy — allows Alpine.js and HTMX to work with CSP #}}
+            {{# Controlled by CSP_TRUSTED_TYPES setting (default: True)           #}}
+            {{# Creates a permissive 'default' policy so libraries like HTMX and  #}}
+            {{# Alpine.js work under Trusted Types enforcement.                   #}}
             {{# ================================================================== #}}
+            {{%- if csp_trusted_types %}}
             <script nonce="{{{{ csp_nonce }}}}">
             if (window.trustedTypes && trustedTypes.createPolicy) {{
                 trustedTypes.createPolicy('default', {{
@@ -345,6 +368,7 @@ def startproject(name: str) -> None:
                 }});
             }}
             </script>
+            {{%- endif %}}
 
             {{# ================================================================== #}}
             {{# HTMX + extensions                                                 #}}

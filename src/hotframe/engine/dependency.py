@@ -92,6 +92,7 @@ class DependencyManager:
         manifest: ModuleManifest,
         **filters,
     ) -> DependencyCheckResult:
+        """Check that all declared dependencies are installed, active, and version-compatible."""
         Model = _get_module_model()
         result = DependencyCheckResult()
 
@@ -119,6 +120,7 @@ class DependencyManager:
         module_id: str,
         **filters,
     ) -> DeactivateCheckResult:
+        """Return whether a module can be safely deactivated, listing any active dependents."""
         dependent_ids = await self._find_active_dependents(session, module_id, **filters)
 
         if not dependent_ids:
@@ -138,6 +140,7 @@ class DependencyManager:
         module_id: str,
         **filters,
     ) -> UninstallCheckResult:
+        """Return whether a module can be uninstalled, listing any installed dependents."""
         Model = _get_module_model()
         stmt = select(Model.module_id, Model.status).where(
             Model.module_id != module_id,
@@ -164,6 +167,15 @@ class DependencyManager:
         )
 
     def resolve_load_order(self, modules: list[dict]) -> list[dict]:
+        """Topologically sort modules so each dependency loads before its dependents.
+
+        Args:
+            modules: List of dicts with keys ``module_id`` and ``manifest``.
+
+        Returns:
+            Ordered list of module dicts safe to load sequentially; modules with
+            missing or cyclic dependencies are excluded with a warning.
+        """
         graph: dict[str, dict] = {m["module_id"]: m for m in modules}
         available = set(graph.keys())
 
@@ -220,6 +232,7 @@ class DependencyManager:
         runtime: ModuleRuntime,
         **filters,
     ) -> None:
+        """Deactivate all active modules that depend on module_id in reverse dependency order."""
         cascade = await self._build_cascade_order(session, module_id, **filters)
         for mid in cascade:
             if mid == module_id:

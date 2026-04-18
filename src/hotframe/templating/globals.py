@@ -28,9 +28,12 @@ async def get_global_context(request: Request) -> dict[str, Any]:
         else Markup("")
     )
 
+    from hotframe.config.settings import get_settings as _get_settings
+
     context: dict[str, Any] = {
         "request": request,
         "csp_nonce": getattr(request.state, "csp_nonce", ""),
+        "csp_trusted_types": _get_settings().CSP_TRUSTED_TYPES,
         "csrf_token": csrf_token,
         "csrf_input": lambda: _csrf_markup,
         "is_htmx": getattr(getattr(request.state, "htmx", None), "is_htmx", False),

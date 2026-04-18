@@ -3,7 +3,7 @@
 CSP utility functions.
 
 Builds Content-Security-Policy header values with per-request nonces.
-Extra sources can be added via settings (CSP_EXTRA_SCRIPT_SRC, etc.).
+Allowed sources can be added via ``settings.CSP_ALLOWED_SOURCES``.
 """
 
 from __future__ import annotations
@@ -13,7 +13,8 @@ def build_csp_header(nonce: str, enforce: bool) -> tuple[str, str]:
     """
     Build the CSP header name and value.
 
-    Extra sources from settings are appended to the base directives.
+    Allowed sources from ``settings.CSP_ALLOWED_SOURCES`` are appended
+    to the base directives for each resource type.
 
     Args:
         nonce: Per-request nonce token.
@@ -26,12 +27,13 @@ def build_csp_header(nonce: str, enforce: bool) -> tuple[str, str]:
     from hotframe.config.settings import get_settings
 
     settings = get_settings()
+    sources = settings.CSP_ALLOWED_SOURCES
 
-    extra_script = " ".join(settings.CSP_EXTRA_SCRIPT_SRC)
-    extra_style = " ".join(settings.CSP_EXTRA_STYLE_SRC)
-    extra_connect = " ".join(settings.CSP_EXTRA_CONNECT_SRC)
-    extra_img = " ".join(settings.CSP_EXTRA_IMG_SRC)
-    extra_font = " ".join(settings.CSP_EXTRA_FONT_SRC)
+    extra_script = " ".join(sources.get("script", []))
+    extra_style = " ".join(sources.get("style", []))
+    extra_connect = " ".join(sources.get("connect", []))
+    extra_img = " ".join(sources.get("img", []))
+    extra_font = " ".join(sources.get("font", []))
 
     if enforce:
         connect_src = f"connect-src 'self' wss://* {extra_connect}".strip()
@@ -50,6 +52,10 @@ def build_csp_header(nonce: str, enforce: bool) -> tuple[str, str]:
         "form-action 'self'",
         "frame-ancestors 'none'",
     ]
+
+    if settings.CSP_TRUSTED_TYPES:
+        directives.append("require-trusted-types-for 'script'")
+        directives.append("trusted-types default")
 
     header_name = "Content-Security-Policy" if enforce else "Content-Security-Policy-Report-Only"
     header_value = "; ".join(directives)

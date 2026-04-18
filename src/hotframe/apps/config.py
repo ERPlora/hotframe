@@ -211,6 +211,12 @@ class AppConfig:
         cfg = MyAppConfig()
         registry.register(cfg)
         await cfg.ready()
+
+    Usage::
+
+        class MyAppConfig(AppConfig):
+            name = "myapp"
+            label = "My App"
     """
 
     name: str = ""
@@ -279,6 +285,12 @@ class ModuleConfig(AppConfig):
             re-enabled from the disabled state).
         async def deactivate(self, ctx) -> None:
             Called when the module is deactivated (user disables it).
+
+    Usage::
+
+        class MyModuleConfig(ModuleConfig):
+            module_id = "mymodule"
+            has_views = True
     """
 
     # ModuleConfig itself is an abstract base — only its subclasses are
@@ -293,18 +305,18 @@ class ModuleConfig(AppConfig):
     s3_key: str | None = None
     sha256: str | None = None
 
-    async def install(self, ctx) -> None:
+    async def install(self, ctx: Any) -> None:
         """Hook. Called once at first install. Default no-op."""
         return None
 
-    async def uninstall(self, ctx) -> None:
+    async def uninstall(self, ctx: Any) -> None:
         """Hook. Idempotent cleanup. Default no-op."""
         return None
 
-    async def activate(self, ctx) -> None:
+    async def activate(self, ctx: Any) -> None:
         """Hook. Called on activate. Default no-op."""
         return None
 
-    async def deactivate(self, ctx) -> None:
+    async def deactivate(self, ctx: Any) -> None:
         """Hook. Called on deactivate. Default no-op."""
         return None

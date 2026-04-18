@@ -29,7 +29,14 @@ from starlette.responses import HTMLResponse
 
 @dataclass(frozen=True, slots=True)
 class TurboStream:
-    """A single OOB fragment to include in a StreamResponse."""
+    """A single OOB fragment to include in a StreamResponse.
+
+    Usage::
+
+        TurboStream.append("#todo-list", html="<li>new item</li>")
+        TurboStream.text("#count", str(total))
+        TurboStream.remove("#empty-state")
+    """
 
     target: str
     action: str  # innerHTML, outerHTML, beforeend, afterbegin, beforebegin, afterend, delete, morph:outerHTML

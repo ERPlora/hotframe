@@ -48,6 +48,7 @@ class ModuleStateDB:
         return _get_module_model()
 
     async def get_active_modules(self, session: ISession, **filters: Any) -> list:
+        """Return all modules with status 'active', ordered by install date."""
         Model = self._model()
         stmt = select(Model).where(Model.status == "active").order_by(Model.installed_at)
         for key, value in filters.items():
@@ -56,6 +57,7 @@ class ModuleStateDB:
         return list(result.scalars().all())
 
     async def get_all_modules(self, session: ISession, **filters: Any) -> list:
+        """Return all modules regardless of status, ordered by install date."""
         Model = self._model()
         stmt = select(Model).order_by(Model.installed_at)
         for key, value in filters.items():
@@ -64,6 +66,7 @@ class ModuleStateDB:
         return list(result.scalars().all())
 
     async def get_module(self, session: ISession, module_id: str, **filters: Any) -> Any | None:
+        """Return a single module row by module_id, or None if not found."""
         Model = self._model()
         stmt = select(Model).where(Model.module_id == module_id)
         for key, value in filters.items():
@@ -81,6 +84,19 @@ class ModuleStateDB:
         status: str = "installing",
         **extra_fields: Any,
     ) -> Any:
+        """Insert a new module row and flush; raises ModuleAlreadyInstallingError on duplicate.
+
+        Args:
+            session: Async SQLAlchemy session.
+            module_id: Unique identifier of the module.
+            version: Semantic version string.
+            checksum: SHA-256 checksum of the module archive.
+            status: Initial status (default ``'installing'``).
+            **extra_fields: Additional columns forwarded to the model constructor.
+
+        Returns:
+            The newly created ORM instance.
+        """
         from sqlalchemy.exc import IntegrityError
 
         Model = self._model()
@@ -111,6 +127,7 @@ class ModuleStateDB:
         manifest_dict: dict[str, Any],
         **filters: Any,
     ) -> None:
+        """Set module status to 'active', update manifest, and clear error_message."""
         Model = self._model()
         now = datetime.now(UTC)
         stmt = update(Model).where(Model.module_id == module_id)
@@ -127,6 +144,7 @@ class ModuleStateDB:
         logger.info("Activated module %s", module_id)
 
     async def deactivate(self, session: ISession, module_id: str, **filters: Any) -> None:
+        """Set module status to 'disabled' and record disabled_at timestamp."""
         Model = self._model()
         now = datetime.now(UTC)
         stmt = update(Model).where(Model.module_id == module_id)
@@ -144,6 +162,7 @@ class ModuleStateDB:
         error: str | None = None,
         **filters: Any,
     ) -> None:
+        """Update module status and adjust related timestamp fields accordingly."""
         Model = self._model()
         values: dict[str, Any] = {"status": status}
         if error is not None:
@@ -167,6 +186,7 @@ class ModuleStateDB:
         error_message: str,
         **filters: Any,
     ) -> None:
+        """Set module status to 'error' and store the error message."""
         await self.set_status(session, module_id, "error", error=error_message, **filters)
         logger.error("Module %s error: %s", module_id, error_message)
 
@@ -177,6 +197,7 @@ class ModuleStateDB:
         manifest_dict: dict[str, Any],
         **filters: Any,
     ) -> None:
+        """Overwrite the stored manifest JSON for a module row."""
         Model = self._model()
         stmt = update(Model).where(Model.module_id == module_id)
         for key, value in filters.items():
@@ -185,6 +206,7 @@ class ModuleStateDB:
         await session.execute(stmt)
 
     async def delete(self, session: ISession, module_id: str, **filters: Any) -> None:
+        """Permanently delete a module row from the state table."""
         Model = self._model()
         stmt = delete(Model).where(Model.module_id == module_id)
         for key, value in filters.items():

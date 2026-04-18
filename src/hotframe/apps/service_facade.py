@@ -33,6 +33,8 @@ class ActionMeta:
 
 
 def action(*, permission: str, mutates: bool = False, description: str = "") -> Any:
+    """Decorator that marks a ModuleService method as a callable action with a required permission."""
+
     def decorator(fn: Any) -> Any:
         fn._action_meta = ActionMeta(
             permission=permission,
@@ -45,7 +47,17 @@ def action(*, permission: str, mutates: bool = False, description: str = "") -> 
 
 
 class ModuleService:
-    """Base class for module services."""
+    """Base class for module services.
+
+    Usage::
+
+        class TodoService(ModuleService):
+            module_id = "todo"
+
+            @action(permission="todo.view")
+            async def list_todos(self) -> list[dict]:
+                return await self.repo(Todo).list()
+    """
 
     module_id: str = ""
 
@@ -63,6 +75,7 @@ class ModuleService:
         search_fields: list[str] | None = None,
         default_order: str = "created_at",
     ) -> IRepository:
+        """Return a hub-scoped BaseRepository for the given model."""
         return BaseRepository(
             model,
             self.db,
@@ -73,10 +86,12 @@ class ModuleService:
 
     @staticmethod
     def serialize(obj: Any, **kwargs: Any) -> dict:
+        """Serialize a single ORM object to a plain dict."""
         return serialize(obj, **kwargs)
 
     @staticmethod
     def serialize_list(items: list, **kwargs: Any) -> list[dict]:
+        """Serialize a list of ORM objects to a list of plain dicts."""
         return serialize_list(items, **kwargs)
 
 

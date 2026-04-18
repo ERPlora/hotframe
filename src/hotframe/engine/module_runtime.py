@@ -118,6 +118,12 @@ class ModuleRuntime:
     Ties together all sub-systems (registry, loader, state, S3, deps,
     lifecycle, migrations) into a cohesive API used by both REST endpoints
     and HTMX views.
+
+    Usage::
+
+        runtime = ModuleRuntime(app, settings, event_bus, hooks, slots)
+        await runtime.boot(session, hub_id)
+        result = await runtime.install(session, hub_id, "my_module")
     """
 
     def __init__(
@@ -128,6 +134,15 @@ class ModuleRuntime:
         hooks: HookRegistry,
         slots: SlotRegistry,
     ) -> None:
+        """Initialize all sub-systems; S3 source is created only when MODULE_SOURCE='s3'.
+
+        Args:
+            app: The FastAPI application instance.
+            settings: Hotframe settings carrying all configuration.
+            event_bus: Async event bus for emitting lifecycle events.
+            hooks: Hook registry for action/filter callbacks.
+            slots: Slot registry for cross-module UI injection.
+        """
         self.app = app
         self.settings = settings
         self.bus = event_bus
@@ -332,6 +347,19 @@ class ModuleRuntime:
             → VALIDATING (dep check) → MIGRATING (DB row + alembic upgrade)
             → IMPORTING (on_install hook) → MOUNTING (loader + templates)
             → STACK_REBUILD (on_activate + DB activate) → ACTIVE (commit).
+
+        Args:
+            session: Async SQLAlchemy session (must be flushed/committed by caller).
+            hub_id: Tenant UUID; pass ``None`` for hub-less (kernel) installs.
+            module_id: Module identifier as it appears in the catalog or filesystem.
+            version: Specific version to install; resolved from marketplace when omitted.
+            checksum: Expected SHA-256 of the archive for integrity verification.
+            source: Explicit URL or local ``.zip`` path; bypasses marketplace resolution.
+            auto_install_deps: When ``True``, inactive dependencies are allowed (installed externally).
+            installed_by: UUID of the user triggering the install, stored for audit.
+
+        Returns:
+            :class:`InstallResult` with ``success``, final ``module_id``, ``version``, and ``error``.
         """
 
         result = InstallResult(module_id=module_id, version=version or "")
@@ -1247,6 +1275,17 @@ class ModuleRuntime:
 
         Steps: download new -> validate -> on_deactivate -> unload ->
         migrate -> load new -> on_activate -> update DB.
+
+        Args:
+            session: Async SQLAlchemy session.
+            hub_id: Tenant UUID identifying which hub owns the module.
+            module_id: Module to update.
+            new_version: Target version string.
+            checksum: Expected SHA-256 of the new archive.
+            source: Explicit URL or ``.zip`` path; bypasses marketplace resolution.
+
+        Returns:
+            :class:`UpdateResult` with ``success``, ``from_version``, ``to_version``, and ``error``.
         """
         result = UpdateResult(module_id=module_id, to_version=new_version)
         was_active = False

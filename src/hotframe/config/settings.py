@@ -148,11 +148,14 @@ class HotframeSettings(BaseSettings):
     SESSION_MAX_AGE: int = 86400 * 30  # 30 days
 
     # --- CSP ---
-    CSP_EXTRA_SCRIPT_SRC: list[str] = []
-    CSP_EXTRA_STYLE_SRC: list[str] = []
-    CSP_EXTRA_CONNECT_SRC: list[str] = []
-    CSP_EXTRA_IMG_SRC: list[str] = []
-    CSP_EXTRA_FONT_SRC: list[str] = []
+    CSP_TRUSTED_TYPES: bool = True
+    CSP_ALLOWED_SOURCES: dict[str, list[str]] = {
+        "script": [],
+        "style": [],
+        "connect": [],
+        "img": [],
+        "font": [],
+    }
 
     # --- Auth ---
     AUTH_USER_MODEL: str = ""  # e.g. "apps.accounts.models.User"
@@ -229,10 +232,12 @@ class HotframeSettings(BaseSettings):
 
     @property
     def is_sqlite(self) -> bool:
+        """Return True if the database backend is SQLite."""
         return self.DATABASE_URL.startswith("sqlite")
 
     @property
     def is_production(self) -> bool:
+        """Return True when running in web mode with DEBUG disabled."""
         return self.DEPLOYMENT_MODE == "web" and not self.DEBUG
 
 

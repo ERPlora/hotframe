@@ -296,24 +296,28 @@ def _render_full(
 
 
 def htmx_redirect(url: str) -> HTMLResponse:
+    """Return an empty HTMLResponse with HX-Redirect header to trigger a client-side redirect."""
     response = HTMLResponse("")
     response.headers["HX-Redirect"] = url
     return response
 
 
 def htmx_refresh() -> HTMLResponse:
+    """Return an empty HTMLResponse with HX-Refresh header to trigger a full page reload."""
     response = HTMLResponse("")
     response.headers["HX-Refresh"] = "true"
     return response
 
 
 def htmx_trigger(event: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build an HX-Trigger payload dict for the given event name and optional data."""
     if data:
         return {event: data}
     return {event: True}
 
 
 def add_message(request: Request, level: str, text: str) -> None:
+    """Append a flash message to request state for delivery via HtmxMessagesMiddleware."""
     if not hasattr(request.state, "_messages"):
         request.state._messages = []
     request.state._messages.append({"level": level, "text": text})
@@ -329,6 +333,8 @@ async def sse_stream(
     event_type: str = "message",
     ping_interval: int = 15,
 ) -> EventSourceResponse:
+    """Wrap an async generator as a Server-Sent Events response with disconnect detection."""
+
     async def event_generator() -> AsyncGenerator[dict[str, str], None]:
         try:
             async for chunk in generator:

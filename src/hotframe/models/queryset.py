@@ -69,39 +69,48 @@ class HubQuery[T]:
         return stmt
 
     def filter(self, *conditions: Any) -> Self:
+        """Apply a WHERE clause."""
         self._conditions.extend(conditions)
         return self
 
     def order_by(self, *columns: Any) -> Self:
+        """Set ORDER BY clause."""
         self._order.extend(columns)
         return self
 
     def options(self, *opts: Any) -> Self:
+        """Add SQLAlchemy query options (e.g. selectinload)."""
         self._load_options.extend(opts)
         return self
 
     def limit(self, n: int) -> Self:
+        """Set LIMIT."""
         self._limit = n
         return self
 
     def offset(self, n: int) -> Self:
+        """Set OFFSET."""
         self._offset = n
         return self
 
     def with_deleted(self) -> Self:
+        """Include soft-deleted records."""
         self._include_deleted = True
         return self
 
     async def all(self) -> list[T]:
+        """Execute query and return all results."""
         result = await self._session.execute(self._base_query())
         return list(result.scalars().all())
 
     async def first(self) -> T | None:
+        """Execute query and return the first result or None."""
         stmt = self._base_query().limit(1)
         result = await self._session.execute(stmt)
         return result.scalars().first()
 
     async def get(self, id: UUID) -> T | None:
+        """Get a single record by primary key."""
         stmt = self._base_query().where(self._model.id == id)
         result = await self._session.execute(stmt)
         return result.scalars().first()
@@ -122,17 +131,20 @@ class HubQuery[T]:
         return stmt
 
     async def count(self) -> int:
+        """Return the count of matching records."""
         stmt = self._filtered_select(func.count(self._model.id))
         result = await self._session.execute(stmt)
         return result.scalar_one()
 
     async def sum(self, column: Any) -> Decimal:
+        """Return the sum of a column."""
         col = getattr(self._model, column) if isinstance(column, str) else column
         stmt = self._filtered_select(func.coalesce(func.sum(col), 0))
         result = await self._session.execute(stmt)
         return Decimal(str(result.scalar_one()))
 
     async def exists(self) -> bool:
+        """Return True if any matching record exists."""
         stmt = self._filtered_select(self._model.id).limit(1)
         result = await self._session.execute(stmt)
         return result.first() is not None
