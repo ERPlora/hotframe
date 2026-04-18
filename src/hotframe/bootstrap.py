@@ -137,6 +137,18 @@ def create_app(settings: HotframeSettings | None = None) -> FastAPI:
 
     build_middleware_stack(app, settings)
 
+    # --- CORS (optional — enabled when CORS_ORIGINS is set) ---
+    if settings.CORS_ORIGINS:
+        from starlette.middleware.cors import CORSMiddleware
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.CORS_ORIGINS,
+            allow_methods=settings.CORS_METHODS,
+            allow_headers=settings.CORS_HEADERS,
+            allow_credentials=settings.CORS_CREDENTIALS,
+        )
+
     # --- Proxy fix (optional) ---
     if settings.PROXY_FIX_ENABLED:
         from hotframe.middleware.proxy_fix import ProxyFixMiddleware

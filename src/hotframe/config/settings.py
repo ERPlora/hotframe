@@ -95,6 +95,13 @@ class HotframeSettings(BaseSettings):
     LANGUAGE: str = "en"
     CURRENCY: str = "USD"
 
+    # --- CORS ---
+    # Empty = CORS disabled. Set origins to enable.
+    CORS_ORIGINS: list[str] = []  # e.g. ["http://localhost:3000", "https://myapp.com"]
+    CORS_METHODS: list[str] = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    CORS_HEADERS: list[str] = ["*"]
+    CORS_CREDENTIALS: bool = True
+
     # --- Security policies ---
     CSP_ENFORCE: bool = False
 
