@@ -583,47 +583,85 @@ app.add_typer(modules_app, name="modules")
 @modules_app.command("list")
 def modules_list() -> None:
     """List all modules and their status."""
-    import asyncio
+    from pathlib import Path
 
-    async def _list():
-        from hotframe.engine.manager import ModuleManager
+    modules_dir = Path("modules")
+    if not modules_dir.exists():
+        typer.echo("No modules found in modules/")
+        return
 
-        manager = ModuleManager()
-        modules = await manager.list()
+    typer.echo(f"{'Module':<20} {'Status':<12} {'Version':<10} {'Views':<6} {'API':<6}")
+    typer.echo("-" * 60)
 
-        if not modules:
-            typer.echo("No modules found in modules/")
-            return
+    for mod_dir in sorted(modules_dir.iterdir()):
+        if not mod_dir.is_dir() or mod_dir.name.startswith((".", "_")):
+            continue
+        if not (mod_dir / "module.py").exists():
+            continue
 
-        typer.echo(f"{'Module':<20} {'Status':<12} {'Version':<10} {'Views':<6} {'API':<6}")
-        typer.echo("-" * 60)
-        for m in modules:
-            views = "yes" if m.has_views else "no"
-            api = "yes" if m.has_api else "no"
-            status = m.status
-            if m.is_system:
-                status += " (system)"
-            typer.echo(f"{m.name:<20} {status:<12} {m.version:<10} {views:<6} {api:<6}")
+        name = mod_dir.name
+        version = ""
+        has_views = "yes"
+        has_api = "yes"
+        is_system = False
 
-    asyncio.run(_list())
+        try:
+            import importlib
+            mod = importlib.import_module(f"modules.{name}.module")
+            for attr_name in dir(mod):
+                attr = getattr(mod, attr_name)
+                if isinstance(attr, type) and hasattr(attr, "name") and getattr(attr, "name", None) == name:
+                    version = getattr(attr, "version", "")
+                    has_views = "yes" if getattr(attr, "has_views", True) else "no"
+                    has_api = "yes" if getattr(attr, "has_api", True) else "no"
+                    is_system = getattr(attr, "is_system", False)
+                    break
+        except Exception:
+            pass
+
+        status = "available"
+        if is_system:
+            status += " (system)"
+        typer.echo(f"{name:<20} {status:<12} {version:<10} {has_views:<6} {has_api:<6}")
 
 
 @modules_app.command("install")
-def modules_install(name: str) -> None:
-    """Install and activate a module."""
+def modules_install(source: str) -> None:
+    """Install a module from name, URL, or .zip path."""
     import asyncio
 
     async def _install():
-        from hotframe.engine.manager import ModuleManager
+        from hotframe.config.database import get_engine, get_session_factory
+        from hotframe.config.settings import get_settings
+        from hotframe.engine.module_runtime import ModuleRuntime
+        from hotframe.models.base import Base
+        from hotframe.signals.dispatcher import AsyncEventBus
+        from hotframe.signals.hooks import HookRegistry
+        from hotframe.templating.slots import SlotRegistry
 
-        manager = ModuleManager()
-        result = await manager.install(name)
+        settings = get_settings()
+        bus = AsyncEventBus()
+        hooks = HookRegistry()
+        slots = SlotRegistry()
+        runtime = ModuleRuntime(app=None, settings=settings, event_bus=bus, hooks=hooks, slots=slots)
 
-        if result.ok:
-            typer.echo(f"OK: {result.message}")
-        else:
-            typer.echo(f"Error: {result.message}", err=True)
-            raise typer.Exit(1)
+        # For CLI without DB, just do a simple filesystem install
+        # Create tables directly
+        engine = get_engine()
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        factory = get_session_factory()
+        async with factory() as session:
+            result = await runtime.install(session, hub_id=None, module_id=source, source=source)
+            if result.success:
+                typer.echo(f"OK: Module '{result.module_id}' v{result.version} installed")
+            else:
+                typer.echo(f"Error: {result.error}", err=True)
+                raise typer.Exit(1)
+            await session.commit()
+
+        await engine.dispose()
 
     asyncio.run(_install())
 
@@ -634,16 +672,28 @@ def modules_update(source: str) -> None:
     import asyncio
 
     async def _update():
-        from hotframe.engine.manager import ModuleManager
+        from hotframe.config.database import get_session_factory
+        from hotframe.config.settings import get_settings
+        from hotframe.engine.module_runtime import ModuleRuntime
+        from hotframe.signals.dispatcher import AsyncEventBus
+        from hotframe.signals.hooks import HookRegistry
+        from hotframe.templating.slots import SlotRegistry
 
-        manager = ModuleManager()
-        result = await manager.update(source)
+        settings = get_settings()
+        runtime = ModuleRuntime(app=None, settings=settings, event_bus=AsyncEventBus(), hooks=HookRegistry(), slots=SlotRegistry())
 
-        if result.ok:
-            typer.echo(f"OK: {result.message}")
-        else:
-            typer.echo(f"Error: {result.message}", err=True)
-            raise typer.Exit(1)
+        factory = get_session_factory()
+        async with factory() as session:
+            result = await runtime.update(session, hub_id=None, module_id=source, new_version=None, source=source)
+            if result.success:
+                typer.echo(f"OK: Module '{result.module_id}' updated to v{result.to_version}")
+            else:
+                typer.echo(f"Error: {result.error}", err=True)
+                raise typer.Exit(1)
+            await session.commit()
+
+        from hotframe.config.database import dispose_engine
+        await dispose_engine()
 
     asyncio.run(_update())
 
@@ -654,16 +704,28 @@ def modules_activate(name: str) -> None:
     import asyncio
 
     async def _activate():
-        from hotframe.engine.manager import ModuleManager
+        from hotframe.config.database import get_session_factory
+        from hotframe.config.settings import get_settings
+        from hotframe.engine.module_runtime import ModuleRuntime
+        from hotframe.signals.dispatcher import AsyncEventBus
+        from hotframe.signals.hooks import HookRegistry
+        from hotframe.templating.slots import SlotRegistry
 
-        manager = ModuleManager()
-        result = await manager.activate(name)
+        settings = get_settings()
+        runtime = ModuleRuntime(app=None, settings=settings, event_bus=AsyncEventBus(), hooks=HookRegistry(), slots=SlotRegistry())
 
-        if result.ok:
-            typer.echo(f"OK: {result.message}")
-        else:
-            typer.echo(f"Error: {result.message}", err=True)
-            raise typer.Exit(1)
+        factory = get_session_factory()
+        async with factory() as session:
+            result = await runtime.activate(session, hub_id=None, module_id=name)
+            if result.success:
+                typer.echo(f"OK: Module '{name}' activated")
+            else:
+                typer.echo(f"Error: {result.error}", err=True)
+                raise typer.Exit(1)
+            await session.commit()
+
+        from hotframe.config.database import dispose_engine
+        await dispose_engine()
 
     asyncio.run(_activate())
 
@@ -674,16 +736,28 @@ def modules_deactivate(name: str) -> None:
     import asyncio
 
     async def _deactivate():
-        from hotframe.engine.manager import ModuleManager
+        from hotframe.config.database import get_session_factory
+        from hotframe.config.settings import get_settings
+        from hotframe.engine.module_runtime import ModuleRuntime
+        from hotframe.signals.dispatcher import AsyncEventBus
+        from hotframe.signals.hooks import HookRegistry
+        from hotframe.templating.slots import SlotRegistry
 
-        manager = ModuleManager()
-        result = await manager.deactivate(name)
+        settings = get_settings()
+        runtime = ModuleRuntime(app=None, settings=settings, event_bus=AsyncEventBus(), hooks=HookRegistry(), slots=SlotRegistry())
 
-        if result.ok:
-            typer.echo(f"OK: {result.message}")
-        else:
-            typer.echo(f"Error: {result.message}", err=True)
-            raise typer.Exit(1)
+        factory = get_session_factory()
+        async with factory() as session:
+            result = await runtime.deactivate(session, hub_id=None, module_id=name)
+            if result.success:
+                typer.echo(f"OK: Module '{name}' deactivated")
+            else:
+                typer.echo(f"Error: {result.error}", err=True)
+                raise typer.Exit(1)
+            await session.commit()
+
+        from hotframe.config.database import dispose_engine
+        await dispose_engine()
 
     asyncio.run(_deactivate())
 
@@ -707,18 +781,28 @@ def modules_uninstall(
             raise typer.Exit(0)
 
     async def _uninstall():
-        from hotframe.engine.manager import ModuleManager
+        from hotframe.config.database import get_session_factory
+        from hotframe.config.settings import get_settings
+        from hotframe.engine.module_runtime import ModuleRuntime
+        from hotframe.signals.dispatcher import AsyncEventBus
+        from hotframe.signals.hooks import HookRegistry
+        from hotframe.templating.slots import SlotRegistry
 
-        manager = ModuleManager()
-        result = await manager.uninstall(name, keep_data=keep_data)
+        settings = get_settings()
+        runtime = ModuleRuntime(app=None, settings=settings, event_bus=AsyncEventBus(), hooks=HookRegistry(), slots=SlotRegistry())
 
-        if result.ok:
-            typer.echo(f"OK: {result.message}")
-            if result.details.get("tables_dropped"):
-                typer.echo(f"  Dropped {result.details['tables_dropped']} table(s)")
-        else:
-            typer.echo(f"Error: {result.message}", err=True)
-            raise typer.Exit(1)
+        factory = get_session_factory()
+        async with factory() as session:
+            result = await runtime.uninstall(session, hub_id=None, module_id=name)
+            if result.success:
+                typer.echo(f"OK: Module '{name}' uninstalled")
+            else:
+                typer.echo(f"Error: {result.error}", err=True)
+                raise typer.Exit(1)
+            await session.commit()
+
+        from hotframe.config.database import dispose_engine
+        await dispose_engine()
 
     asyncio.run(_uninstall())
 

@@ -310,10 +310,11 @@ class ModuleRuntime:
     async def install(
         self,
         session: AsyncSession,
-        hub_id: UUID,
+        hub_id: UUID | None,
         module_id: str,
-        version: str,
+        version: str | None = None,
         checksum: str = "",
+        source: str | None = None,
         auto_install_deps: bool = False,
         installed_by: UUID | None = None,
     ) -> InstallResult:
@@ -331,15 +332,16 @@ class ModuleRuntime:
             → STACK_REBUILD (on_activate + DB activate) → ACTIVE (commit).
         """
 
-        result = InstallResult(module_id=module_id, version=version)
+        result = InstallResult(module_id=module_id, version=version or "")
 
         # Pre-check (outside the pipeline — no side effects yet).
-        existing = await self.state.get_module(session, hub_id, module_id)
-        if existing is not None:
-            result.error = (
-                f"Module {module_id} is already installed (status={existing.status})"
-            )
-            return result
+        if hub_id is not None:
+            existing = await self.state.get_module(session, hub_id, module_id)
+            if existing is not None:
+                result.error = (
+                    f"Module {module_id} is already installed (status={existing.status})"
+                )
+                return result
 
         pipeline = HotMountPipeline(module_id=module_id)
         manifest = None
@@ -351,9 +353,14 @@ class ModuleRuntime:
             download = await pipeline.run_phase(
                 "DOWNLOADING",
                 self._phase_download,
-                module_id, version, checksum,
+                module_id, version, checksum, source,
             )
             module_path = download.payload["module_path"]
+            # Propagate resolved version/checksum from source resolution
+            if "version" in download.payload:
+                version = download.payload["version"]
+            if "checksum" in download.payload:
+                checksum = download.payload["checksum"]
 
             validate = await pipeline.run_phase(
                 "VALIDATING",
@@ -427,16 +434,17 @@ class ModuleRuntime:
                     len(rollback_errors), ctx["module_id"],
                 )
             # Best-effort: persist error status if the DB row was created.
-            try:
-                await self.state.set_error(
-                    session, hub_id, ctx["module_id"], str(e),
-                )
-            except Exception as db_err:
-                logger.error(
-                    "Cleanup: failed to set error status in DB for %s: %s",
-                    ctx["module_id"],
-                    db_err,
-                )
+            if hub_id is not None:
+                try:
+                    await self.state.set_error(
+                        session, hub_id, ctx["module_id"], str(e),
+                    )
+                except Exception as db_err:
+                    logger.error(
+                        "Cleanup: failed to set error status in DB for %s: %s",
+                        ctx["module_id"],
+                        db_err,
+                    )
 
         return result
 
@@ -452,42 +460,154 @@ class ModuleRuntime:
     async def _phase_download(
         self,
         module_id: str,
-        version: str,
+        version: str | None,
         checksum: str,
+        source: str | None = None,
     ) -> PhaseResult:
-        """Download from S3 and atomically materialize into MODULES_DIR."""
+        """
+        Resolve module source and materialize into MODULES_DIR.
+
+        Source resolution order:
+        1. ``source`` is a URL → download via MarketplaceClient
+        2. ``source`` is a local .zip path → extract directly
+        3. Module already exists in MODULES_DIR → skip download
+        4. ``MODULE_MARKETPLACE_URL`` is configured → resolve + download
+        5. S3 fallback (legacy)
+        """
         import shutil
 
-
-        cache_path = await self.s3.download(module_id, version, checksum)
-
         target_path = Path(self.settings.MODULES_DIR) / module_id
-        tmp_path = target_path.with_suffix(".tmp")
-        if tmp_path.exists():
-            shutil.rmtree(tmp_path)
-        shutil.copytree(cache_path, tmp_path)
-        if target_path.exists():
-            shutil.rmtree(target_path)
-        tmp_path.rename(target_path)
+        resolved_version = version
+        resolved_checksum = checksum
 
-        s3 = self.s3
+        # 1. Explicit URL source → download via MarketplaceClient
+        if source and (source.startswith("http://") or source.startswith("https://")):
+            from hotframe.engine.marketplace_client import MarketplaceClient
+            client = MarketplaceClient("")
+            cache_path = await client.download(source, self.settings.MODULES_CACHE_DIR, checksum)
+            tmp_path = target_path.with_suffix(".tmp")
+            if tmp_path.exists():
+                shutil.rmtree(tmp_path)
+            shutil.copytree(cache_path, tmp_path)
+            if target_path.exists():
+                shutil.rmtree(target_path)
+            tmp_path.rename(target_path)
 
-        class _DownloadRollback:
-            async def undo(self) -> None:
-                if target_path.exists():
-                    shutil.rmtree(target_path, ignore_errors=True)
-                try:
-                    s3.clear_cache(module_id)
-                except Exception as cache_err:
-                    logger.error(
-                        "Rollback: failed to clear S3 cache for %s: %s",
-                        module_id, cache_err,
-                    )
+            class _UrlDownloadRollback:
+                async def undo(self) -> None:
+                    if target_path.exists():
+                        shutil.rmtree(target_path, ignore_errors=True)
 
-        return PhaseResult(
-            phase_name="DOWNLOADING",
-            rollback=_DownloadRollback(),
-            payload={"module_path": target_path},
+            return PhaseResult(
+                phase_name="DOWNLOADING",
+                rollback=_UrlDownloadRollback(),
+                payload={"module_path": target_path},
+            )
+
+        # 2. Explicit local .zip source → extract directly
+        if source and source.endswith(".zip") and Path(source).exists():
+            from hotframe.engine.marketplace_client import MarketplaceClient
+            cache_path = MarketplaceClient._extract_zip(
+                Path(source), self.settings.MODULES_CACHE_DIR
+            )
+            tmp_path = target_path.with_suffix(".tmp")
+            if tmp_path.exists():
+                shutil.rmtree(tmp_path)
+            shutil.copytree(cache_path, tmp_path)
+            if target_path.exists():
+                shutil.rmtree(target_path)
+            tmp_path.rename(target_path)
+
+            class _ZipDownloadRollback:
+                async def undo(self) -> None:
+                    if target_path.exists():
+                        shutil.rmtree(target_path, ignore_errors=True)
+
+            return PhaseResult(
+                phase_name="DOWNLOADING",
+                rollback=_ZipDownloadRollback(),
+                payload={"module_path": target_path},
+            )
+
+        # 3. Module already on disk → skip download
+        if target_path.exists() and (target_path / "module.py").exists():
+            class _NoopDownloadRollback:
+                async def undo(self) -> None:
+                    return None
+
+            return PhaseResult(
+                phase_name="DOWNLOADING",
+                rollback=_NoopDownloadRollback(),
+                payload={"module_path": target_path},
+            )
+
+        # 4. Marketplace URL configured → resolve + download
+        if self.settings.MODULE_MARKETPLACE_URL:
+            from hotframe.engine.marketplace_client import MarketplaceClient
+            client = MarketplaceClient(self.settings.MODULE_MARKETPLACE_URL)
+            info = await client.resolve(module_id, version)
+            cache_path = await client.download(
+                info.download_url, self.settings.MODULES_CACHE_DIR, info.checksum_sha256,
+            )
+            resolved_version = info.version
+            resolved_checksum = info.checksum_sha256
+            tmp_path = target_path.with_suffix(".tmp")
+            if tmp_path.exists():
+                shutil.rmtree(tmp_path)
+            shutil.copytree(cache_path, tmp_path)
+            if target_path.exists():
+                shutil.rmtree(target_path)
+            tmp_path.rename(target_path)
+
+            class _MarketplaceDownloadRollback:
+                async def undo(self) -> None:
+                    if target_path.exists():
+                        shutil.rmtree(target_path, ignore_errors=True)
+
+            return PhaseResult(
+                phase_name="DOWNLOADING",
+                rollback=_MarketplaceDownloadRollback(),
+                payload={
+                    "module_path": target_path,
+                    "version": resolved_version,
+                    "checksum": resolved_checksum,
+                },
+            )
+
+        # 5. S3 fallback (legacy)
+        if self.s3 is not None:
+            cache_path = await self.s3.download(module_id, version, checksum)
+            tmp_path = target_path.with_suffix(".tmp")
+            if tmp_path.exists():
+                shutil.rmtree(tmp_path)
+            shutil.copytree(cache_path, tmp_path)
+            if target_path.exists():
+                shutil.rmtree(target_path)
+            tmp_path.rename(target_path)
+
+            s3 = self.s3
+
+            class _S3DownloadRollback:
+                async def undo(self) -> None:
+                    if target_path.exists():
+                        shutil.rmtree(target_path, ignore_errors=True)
+                    try:
+                        s3.clear_cache(module_id)
+                    except Exception as cache_err:
+                        logger.error(
+                            "Rollback: failed to clear S3 cache for %s: %s",
+                            module_id, cache_err,
+                        )
+
+            return PhaseResult(
+                phase_name="DOWNLOADING",
+                rollback=_S3DownloadRollback(),
+                payload={"module_path": target_path},
+            )
+
+        raise RuntimeError(
+            f"Module '{module_id}' not found and no download source configured "
+            "(no source URL/zip, not in MODULES_DIR, no marketplace URL, no S3)"
         )
 
     async def _phase_validate(
@@ -520,14 +640,15 @@ class ModuleRuntime:
                 "using manifest ID as canonical",
                 module_id, canonical_id,
             )
-            existing_canonical = await self.state.get_module(
-                session, hub_id, canonical_id,
-            )
-            if existing_canonical is not None:
-                raise RuntimeError(
-                    f"Module {canonical_id} (catalog key: {module_id}) is already "
-                    f"installed (status={existing_canonical.status})"
+            if hub_id is not None:
+                existing_canonical = await self.state.get_module(
+                    session, hub_id, canonical_id,
                 )
+                if existing_canonical is not None:
+                    raise RuntimeError(
+                        f"Module {canonical_id} (catalog key: {module_id}) is already "
+                        f"installed (status={existing_canonical.status})"
+                    )
             canonical_path = Path(self.settings.MODULES_DIR) / canonical_id
             if canonical_path.exists():
                 _shutil.rmtree(canonical_path)
@@ -582,24 +703,25 @@ class ModuleRuntime:
     ) -> PhaseResult:
         """Verify dependencies (catalog + version + active) before mutating state."""
 
-        dep_check = await self.deps.check_install_deps(session, hub_id, manifest)
-        if not dep_check.ok:
-            if dep_check.missing:
-                raise RuntimeError(
-                    f"Missing dependencies (not in catalog): {dep_check.missing}"
-                )
-            if dep_check.version_mismatch:
-                mismatches = [
-                    f"{mid} requires {req}, installed {actual}"
-                    for mid, req, actual in dep_check.version_mismatch
-                ]
-                raise RuntimeError(
-                    f"Version mismatch: {'; '.join(mismatches)}"
-                )
-            if dep_check.inactive and not auto_install_deps:
-                raise RuntimeError(
-                    f"Inactive dependencies (activate first): {dep_check.inactive}"
-                )
+        if hub_id is not None:
+            dep_check = await self.deps.check_install_deps(session, hub_id, manifest)
+            if not dep_check.ok:
+                if dep_check.missing:
+                    raise RuntimeError(
+                        f"Missing dependencies (not in catalog): {dep_check.missing}"
+                    )
+                if dep_check.version_mismatch:
+                    mismatches = [
+                        f"{mid} requires {req}, installed {actual}"
+                        for mid, req, actual in dep_check.version_mismatch
+                    ]
+                    raise RuntimeError(
+                        f"Version mismatch: {'; '.join(mismatches)}"
+                    )
+                if dep_check.inactive and not auto_install_deps:
+                    raise RuntimeError(
+                        f"Inactive dependencies (activate first): {dep_check.inactive}"
+                    )
 
         class _NoopRollback:
             async def undo(self) -> None:
@@ -624,12 +746,13 @@ class ModuleRuntime:
     ) -> PhaseResult:
         """Create DB row (status='installing') and run Alembic upgrade."""
 
-        await self.state.create(
-            session, hub_id, module_id, version,
-            checksum=checksum,
-            status="installing",
-            installed_by=installed_by,
-        )
+        if hub_id is not None:
+            await self.state.create(
+                session, hub_id, module_id, version,
+                checksum=checksum,
+                status="installing",
+                installed_by=installed_by,
+            )
 
         migrated = False
         if manifest.HAS_MODELS:
@@ -654,13 +777,14 @@ class ModuleRuntime:
                             "Rollback: failed to downgrade migrations for %s: %s",
                             module_id, mig_err,
                         )
-                try:
-                    await state.delete(session, hub_id, module_id)
-                except Exception as db_err:
-                    logger.error(
-                        "Rollback: failed to delete DB row for %s: %s",
-                        module_id, db_err,
-                    )
+                if hub_id is not None:
+                    try:
+                        await state.delete(session, hub_id, module_id)
+                    except Exception as db_err:
+                        logger.error(
+                            "Rollback: failed to delete DB row for %s: %s",
+                            module_id, db_err,
+                        )
 
         return PhaseResult(
             phase_name="MIGRATING",
@@ -676,7 +800,8 @@ class ModuleRuntime:
     ) -> PhaseResult:
         """Invoke ``on_install`` lifecycle hook."""
 
-        await self.lifecycle.call(module_id, "on_install", session, hub_id)
+        if hub_id is not None:
+            await self.lifecycle.call(module_id, "on_install", session, hub_id)
 
         class _OnInstallRollback:
             async def undo(self) -> None:
@@ -733,10 +858,11 @@ class ModuleRuntime:
     ) -> PhaseResult:
         """Run ``on_activate`` hook and flip the DB row to ``active``."""
 
-        await self.lifecycle.call(module_id, "on_activate", session, hub_id)
-        await self.state.activate(
-            session, hub_id, module_id, manifest_to_dict(manifest),
-        )
+        if hub_id is not None:
+            await self.lifecycle.call(module_id, "on_activate", session, hub_id)
+            await self.state.activate(
+                session, hub_id, module_id, manifest_to_dict(manifest),
+            )
 
         class _ActivateRollback:
             async def undo(self) -> None:
@@ -782,20 +908,26 @@ class ModuleRuntime:
             # Ensure code is available at /app/modules/{module_id}/
             module_path = Path(self.settings.MODULES_DIR) / module_id
             if not module_path.exists() or not (module_path / "module.py").exists():
-                # Try S3 cache first, then download
-                cache_path = self.settings.MODULES_CACHE_DIR / module_id
-                if not cache_path.exists() or not (cache_path / "module.py").exists():
-                    cache_path = await self.s3.download(
-                        module_id, mod.version, mod.checksum_sha256,
+                if self.s3 is not None:
+                    # Try S3 cache first, then download
+                    cache_path = self.settings.MODULES_CACHE_DIR / module_id
+                    if not cache_path.exists() or not (cache_path / "module.py").exists():
+                        cache_path = await self.s3.download(
+                            module_id, mod.version, mod.checksum_sha256,
+                        )
+                    import shutil
+                    tmp_path = module_path.with_suffix(".tmp")
+                    if tmp_path.exists():
+                        shutil.rmtree(tmp_path)
+                    shutil.copytree(cache_path, tmp_path)
+                    if module_path.exists():
+                        shutil.rmtree(module_path)
+                    tmp_path.rename(module_path)
+                else:
+                    raise RuntimeError(
+                        f"Module '{module_id}' code not found at {module_path} "
+                        "and no S3 source configured to retrieve it"
                     )
-                import shutil
-                tmp_path = module_path.with_suffix(".tmp")
-                if tmp_path.exists():
-                    shutil.rmtree(tmp_path)
-                shutil.copytree(cache_path, tmp_path)
-                if module_path.exists():
-                    shutil.rmtree(module_path)
-                tmp_path.rename(module_path)
 
             # Validate manifest
             manifest = load_manifest(module_path)
@@ -1016,7 +1148,8 @@ class ModuleRuntime:
             await self.state.delete(session, hub_id, module_id)
 
             # Clean local cache
-            self.s3.clear_cache(module_id)
+            if self.s3 is not None:
+                self.s3.clear_cache(module_id)
 
             # Refresh templates after unload
             self._refresh_templates()
@@ -1059,6 +1192,7 @@ class ModuleRuntime:
         module_id: str,
         new_version: str,
         checksum: str = "",
+        source: str | None = None,
     ) -> UpdateResult:
         """
         Update a module to a new version.
@@ -1079,10 +1213,70 @@ class ModuleRuntime:
             result.from_version = mod.version
             was_active = mod.status == "active"
 
-            # 1. Download new version
-            module_path = await self.s3.download(
-                module_id, new_version, checksum,
-            )
+            # 1. Download new version — source resolution order:
+            #    explicit URL → explicit .zip → marketplace → S3
+            module_path: Path | None = None
+            target_path = Path(self.settings.MODULES_DIR) / module_id
+
+            if source and (source.startswith("http://") or source.startswith("https://")):
+                from hotframe.engine.marketplace_client import MarketplaceClient
+                client = MarketplaceClient("")
+                cache_path = await client.download(
+                    source, self.settings.MODULES_CACHE_DIR, checksum
+                )
+                import shutil as _shutil
+                tmp_path = target_path.with_suffix(".tmp")
+                if tmp_path.exists():
+                    _shutil.rmtree(tmp_path)
+                _shutil.copytree(cache_path, tmp_path)
+                if target_path.exists():
+                    _shutil.rmtree(target_path)
+                tmp_path.rename(target_path)
+                module_path = target_path
+            elif source and source.endswith(".zip") and Path(source).exists():
+                import shutil as _shutil
+
+                from hotframe.engine.marketplace_client import MarketplaceClient
+                cache_path = MarketplaceClient._extract_zip(
+                    Path(source), self.settings.MODULES_CACHE_DIR
+                )
+                tmp_path = target_path.with_suffix(".tmp")
+                if tmp_path.exists():
+                    _shutil.rmtree(tmp_path)
+                _shutil.copytree(cache_path, tmp_path)
+                if target_path.exists():
+                    _shutil.rmtree(target_path)
+                tmp_path.rename(target_path)
+                module_path = target_path
+            elif self.settings.MODULE_MARKETPLACE_URL:
+                import shutil as _shutil
+
+                from hotframe.engine.marketplace_client import MarketplaceClient
+                client = MarketplaceClient(self.settings.MODULE_MARKETPLACE_URL)
+                info = await client.resolve(module_id, new_version or None)
+                cache_path = await client.download(
+                    info.download_url, self.settings.MODULES_CACHE_DIR, info.checksum_sha256
+                )
+                new_version = info.version
+                checksum = info.checksum_sha256
+                result.to_version = new_version
+                tmp_path = target_path.with_suffix(".tmp")
+                if tmp_path.exists():
+                    _shutil.rmtree(tmp_path)
+                _shutil.copytree(cache_path, tmp_path)
+                if target_path.exists():
+                    _shutil.rmtree(target_path)
+                tmp_path.rename(target_path)
+                module_path = target_path
+            elif self.s3 is not None:
+                module_path = await self.s3.download(
+                    module_id, new_version, checksum,
+                )
+            else:
+                result.error = (
+                    f"Cannot update '{module_id}': no source, marketplace URL, or S3 configured"
+                )
+                return result
 
             # 2. Validate new manifest
             try:

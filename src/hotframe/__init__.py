@@ -70,6 +70,7 @@ _LAZY_IMPORTS: dict[str, str] = {
     "ModuleStateDB": "hotframe.engine.state",
     "HotMountPipeline": "hotframe.engine.pipeline",
     "ImportManager": "hotframe.engine.import_manager",
+    "MarketplaceClient": "hotframe.engine.marketplace_client",
     # Forms
     "FormRenderer": "hotframe.forms.rendering",
     # Config
