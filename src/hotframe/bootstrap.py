@@ -178,12 +178,19 @@ def create_app(settings: HotframeSettings | None = None) -> FastAPI:
     # --- Auto-discover app routers ---
     _auto_discover_apps(app)
 
+    # --- Static files ---
+    from pathlib import Path as _Path
+
+    from fastapi.staticfiles import StaticFiles
+
+    static_root = _Path(settings.STATIC_ROOT).resolve()
+    if static_root.exists():
+        app.mount(settings.STATIC_URL, StaticFiles(directory=str(static_root)), name="static")
+
     # --- Media files (local dev only) ---
     if settings.MEDIA_STORAGE == "local" and settings.DEBUG:
-        from pathlib import Path as _Path
         media_root = _Path(settings.MEDIA_ROOT).resolve()
         media_root.mkdir(parents=True, exist_ok=True)
-        from fastapi.staticfiles import StaticFiles
         app.mount(settings.MEDIA_URL, StaticFiles(directory=str(media_root)), name="media")
 
     # --- Error handlers ---
