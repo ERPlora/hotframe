@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="HotFrame" width="200">
+  <img src="https://raw.githubusercontent.com/ERPlora/hotframe/main/logo.png" alt="HotFrame" width="200">
 </p>
 
 
