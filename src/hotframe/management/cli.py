@@ -14,7 +14,6 @@ Usage::
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from textwrap import dedent
 
@@ -820,6 +819,8 @@ def startapp(name: str) -> None:
 
     migrations_dir = app_dir / "migrations"
     migrations_dir.mkdir()
+    (migrations_dir / "versions").mkdir()
+    (migrations_dir / "env.py").write_text(_generate_env_py(name))
 
     tests_dir = app_dir / "tests"
     tests_dir.mkdir()
@@ -957,6 +958,8 @@ def startmodule(
     # migrations/
     migrations_dir = mod_dir / "migrations"
     migrations_dir.mkdir()
+    (migrations_dir / "versions").mkdir()
+    (migrations_dir / "env.py").write_text(_generate_env_py(name))
 
     # tests/
     tests_dir = mod_dir / "tests"
@@ -1283,19 +1286,82 @@ def runserver(
 
 
 @app.command()
-def migrate() -> None:
-    """Run database migrations (Alembic upgrade head)."""
-    typer.echo("Running migrations...")
-    try:
-        import asyncio
+def migrate(
+    name: str = typer.Argument(
+        None, help="App or module name (e.g. 'accounts'). Omit to migrate all."
+    ),
+) -> None:
+    """Run migrations for all apps and modules (or a specific one).
 
-        from hotframe.migrations.runner import run_core_migrations
+    Scans apps/*/migrations/ and modules/*/migrations/ and runs
+    Alembic upgrade head for each, using namespaced version tables.
 
-        asyncio.run(run_core_migrations())
-        typer.echo("Migrations complete.")
-    except ImportError:
-        typer.echo("Migration runner not available. Run alembic directly:")
-        typer.echo("  alembic upgrade head")
+    Examples::
+
+        hf migrate              # all apps + modules
+        hf migrate accounts     # only accounts app
+        hf migrate sales        # only sales module
+    """
+    import asyncio
+
+    async def _migrate():
+        from hotframe.config.settings import get_settings
+        from hotframe.migrations.runner import ModuleMigrationRunner
+
+        settings = get_settings()
+        runner = ModuleMigrationRunner()
+        db_url = runner.get_sync_db_url(settings.DATABASE_URL)
+        cwd = Path.cwd()
+
+        targets: list[tuple[str, Path]] = []
+
+        if name:
+            # Specific app or module
+            app_path = cwd / "apps" / name
+            mod_path = cwd / "modules" / name
+            if app_path.exists():
+                targets.append((name, app_path))
+            elif mod_path.exists():
+                targets.append((name, mod_path))
+            else:
+                typer.echo(f"Error: '{name}' not found in apps/ or modules/", err=True)
+                raise typer.Exit(1)
+        else:
+            # All apps
+            apps_dir = cwd / "apps"
+            if apps_dir.exists():
+                for d in sorted(apps_dir.iterdir()):
+                    if (
+                        d.is_dir()
+                        and not d.name.startswith((".", "_"))
+                        and (d / "migrations").exists()
+                    ):
+                        targets.append((d.name, d))
+            # All modules
+            modules_dir = cwd / "modules"
+            if modules_dir.exists():
+                for d in sorted(modules_dir.iterdir()):
+                    if (
+                        d.is_dir()
+                        and not d.name.startswith((".", "_"))
+                        and (d / "migrations").exists()
+                    ):
+                        targets.append((d.name, d))
+
+        if not targets:
+            typer.echo("No migrations found in apps/ or modules/")
+            return
+
+        for mid, mpath in targets:
+            if runner.has_migrations(mpath):
+                typer.echo(f"  Migrating {mid}...")
+                await runner.upgrade(mid, mpath, db_url)
+            else:
+                typer.echo(f"  {mid}: no migration scripts, skipping")
+
+        typer.echo(f"Done — {len(targets)} migration(s) processed.")
+
+    asyncio.run(_migrate())
 
 
 # ---------------------------------------------------------------------------
@@ -1304,14 +1370,143 @@ def migrate() -> None:
 
 
 @app.command()
-def makemigrations(message: str = "auto") -> None:
-    """Generate new migration (Alembic revision --autogenerate)."""
-    typer.echo(f"Generating migration: {message}")
+def makemigrations(
+    name: str = typer.Argument(..., help="App or module name (e.g. 'accounts')"),
+    message: str = typer.Option("auto", "-m", "--message", help="Migration message"),
+) -> None:
+    """Generate a new migration for an app or module.
+
+    Creates an Alembic revision in apps/{name}/migrations/ or
+    modules/{name}/migrations/ with autogenerate.
+
+    Examples::
+
+        hf makemigrations accounts -m "add email field"
+        hf makemigrations sales -m "initial"
+    """
+    import asyncio
+
+    async def _makemigrations():
+        from alembic import command
+        from alembic.config import Config
+
+        from hotframe.config.settings import get_settings
+
+        settings = get_settings()
+        cwd = Path.cwd()
+
+        # Find the app or module
+        app_path = cwd / "apps" / name
+        mod_path = cwd / "modules" / name
+        if app_path.exists():
+            target_path = app_path
+        elif mod_path.exists():
+            target_path = mod_path
+        else:
+            typer.echo(f"Error: '{name}' not found in apps/ or modules/", err=True)
+            raise typer.Exit(1)
+
+        migrations_dir = target_path / "migrations"
+        versions_dir = migrations_dir / "versions"
+
+        # Create migrations structure if it doesn't exist
+        migrations_dir.mkdir(exist_ok=True)
+        versions_dir.mkdir(exist_ok=True)
+
+        # Create env.py if missing
+        env_py = migrations_dir / "env.py"
+        if not env_py.exists():
+            env_py.write_text(_generate_env_py(name))
+            typer.echo(f"  Created {migrations_dir}/env.py")
+
+        # Build Alembic config programmatically
+        db_url = settings.DATABASE_URL.replace("+asyncpg", "").replace("+aiosqlite", "")
+        version_table = f"alembic_{name}"
+
+        config = Config()
+        config.set_main_option("script_location", str(migrations_dir))
+        config.set_main_option("sqlalchemy.url", db_url)
+        config.set_main_option("version_table", version_table)
+
+        typer.echo(f"Generating migration for '{name}': {message}")
+
+        await asyncio.to_thread(command.revision, config, message=message, autogenerate=True)
+        typer.echo(f"Done — migration created in {migrations_dir}/versions/")
+
+    asyncio.run(_makemigrations())
+
+
+def _generate_env_py(name: str) -> str:
+    """Generate a minimal env.py for Alembic migrations."""
+    return f'''\
+"""Alembic migration environment for {name}."""
+from alembic import context
+from sqlalchemy import create_engine, pool
+
+# Import Base so Alembic sees the models
+from hotframe.models.base import Base  # noqa: F401
+
+# Import this app/module's models
+try:
+    import importlib
+    # Try as app first, then as module
     try:
-        os.system(f'alembic revision --autogenerate -m "{message}"')
-    except Exception as exc:
-        typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(1) from None
+        importlib.import_module("apps.{name}.models")
+    except ImportError:
+        importlib.import_module("modules.{name}.models")
+except ImportError:
+    pass
+
+target_metadata = Base.metadata
+config = context.config
+
+
+def run_migrations_offline():
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        compare_type=True,
+        render_as_batch=True,
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations_online():
+    # Check if a connection was passed (from ModuleMigrationRunner)
+    connectable = config.attributes.get("connection")
+    if connectable is None:
+        url = config.get_main_option("sqlalchemy.url")
+        connectable = create_engine(url, poolclass=pool.NullPool)
+
+    if hasattr(connectable, "connect"):
+        with connectable.connect() as connection:
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                compare_type=True,
+                render_as_batch=True,
+            )
+            with context.begin_transaction():
+                context.run_migrations()
+    else:
+        context.configure(
+            connection=connectable,
+            target_metadata=target_metadata,
+            compare_type=True,
+            render_as_batch=True,
+        )
+        with context.begin_transaction():
+            context.run_migrations()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
+'''
 
 
 # ---------------------------------------------------------------------------
