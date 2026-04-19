@@ -39,6 +39,7 @@ from hotframe.migrations.runner import ModuleMigrationRunner
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
+    from hotframe.components.registry import ComponentRegistry
     from hotframe.config.settings import HotframeSettings
     from hotframe.db.protocols import ISession
     from hotframe.signals.dispatcher import AsyncEventBus
@@ -133,6 +134,7 @@ class ModuleRuntime:
         event_bus: AsyncEventBus,
         hooks: HookRegistry,
         slots: SlotRegistry,
+        components: ComponentRegistry | None = None,
     ) -> None:
         """Initialize all sub-systems; S3 source is created only when MODULE_SOURCE='s3'.
 
@@ -142,16 +144,27 @@ class ModuleRuntime:
             event_bus: Async event bus for emitting lifecycle events.
             hooks: Hook registry for action/filter callbacks.
             slots: Slot registry for cross-module UI injection.
+            components: Optional component registry. When provided, the
+                module loader will drop the module's components on unload
+                and rollback, symmetric to slot teardown.
         """
         self.app = app
         self.settings = settings
         self.bus = event_bus
         self.hooks = hooks
         self.slots = slots
+        self.components = components
 
         # Sub-systems
         self.registry = ModuleRegistry()
-        self.loader = ModuleLoader(app, self.registry, event_bus, hooks, slots)
+        self.loader = ModuleLoader(
+            app,
+            self.registry,
+            event_bus,
+            hooks,
+            slots,
+            components=components,
+        )
         self.state = ModuleStateDB()
         self.s3 = None
         if settings.MODULE_SOURCE == "s3" and settings.S3_MODULES_BUCKET:

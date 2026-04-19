@@ -145,7 +145,9 @@ def _auto_instrument_fastapi() -> None:
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-        FastAPIInstrumentor.instrument()
+        # BaseInstrumentor.instrument is an instance method — call it on
+        # an instance, not on the class itself.
+        FastAPIInstrumentor().instrument()
         logger.debug("FastAPI auto-instrumentation enabled")
     except ImportError:
         logger.debug("opentelemetry-instrumentation-fastapi not installed — skipping")

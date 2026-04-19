@@ -76,6 +76,9 @@ docs = [
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.26",
 ]
+shell = [
+    "ipython>=8.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/ERPlora/hotframe"

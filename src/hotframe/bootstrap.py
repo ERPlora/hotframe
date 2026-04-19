@@ -37,6 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Database engine initialized: %s", engine.url.render_as_string(hide_password=True))
 
     # 2. Create core registries
+    from hotframe.components.registry import ComponentRegistry
     from hotframe.signals.dispatcher import AsyncEventBus
     from hotframe.signals.hooks import HookRegistry
     from hotframe.templating.slots import SlotRegistry
@@ -44,6 +45,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     event_bus = AsyncEventBus()
     hooks = HookRegistry()
     slots = SlotRegistry()
+    components = ComponentRegistry()
 
     # 2b. Create broadcast hub (SSE/WS real-time fan-out)
     from hotframe.views.broadcast import BroadcastHub
@@ -61,6 +63,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.event_bus = event_bus
     app.state.hooks = hooks
     app.state.slots = slots
+    app.state.components = components
 
     # 5. Initialize Jinja2 template engine
     from hotframe.config.settings import get_settings
@@ -69,12 +72,31 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     app.state.templates = create_template_engine(modules_dir=settings.MODULES_DIR)
 
+    # Expose the component registry to the Jinja2 environment so the
+    # ``render_component`` global and ``{% component %}`` tag can resolve
+    # entries without having to reach into ``app.state`` at render time.
+    app.state.templates.env.globals["_hotframe_components"] = components
+
     # 6. Initialize ModuleRuntime
     from hotframe.engine.module_runtime import ModuleRuntime
 
-    runtime = ModuleRuntime(app, settings, event_bus, hooks, slots)
+    runtime = ModuleRuntime(app, settings, event_bus, hooks, slots, components=components)
     app.state.module_runtime = runtime
     app.state.module_registry = runtime.registry
+
+    # 7. Components — discover every project app, then mount routers + static.
+    # Module components are discovered/mounted by the loader on module load.
+    from pathlib import Path as _Path
+
+    from hotframe.components.discovery import discover_apps_components
+    from hotframe.components.mounting import (
+        mount_component_routers,
+        mount_component_static,
+    )
+
+    discover_apps_components(components, _Path.cwd() / "apps")
+    mount_component_routers(app, components)
+    mount_component_static(app, components)
 
     elapsed = (time.monotonic() - t0) * 1000
     logger.info("Application started in %.0fms", elapsed)
@@ -243,13 +265,18 @@ def _auto_discover_apps(app: FastAPI) -> None:
     Scans ``apps/*/`` for ``routes.py`` (HTMX views) and ``api.py``
     (REST API) and mounts any ``router`` / ``api_router`` found.
 
-    Also calls ``AppConfig.ready()`` if ``app.py`` defines one.
+    Also calls ``AppConfig.ready()`` if ``app.py`` defines one. Because
+    this function runs synchronously during ``create_app`` (before the
+    lifespan has started), an async ``ready`` is scheduled on a fresh
+    event loop instead of being awaited inline.
 
     If ``settings.INSTALLED_APPS`` is set, only those apps are loaded
     (in that order). Otherwise, all apps in ``apps/`` are loaded
     alphabetically.
     """
+    import asyncio
     import importlib
+    import inspect
     from pathlib import Path
 
     from hotframe.config.settings import get_settings
@@ -298,7 +325,11 @@ def _auto_discover_apps(app: FastAPI) -> None:
         except Exception:
             logger.exception("Failed to load API for app '%s'", name)
 
-        # Call AppConfig.ready() if defined
+        # Call AppConfig.ready() if defined. AppConfig subclasses may
+        # declare ``ready`` as either a plain or ``async def`` method; we
+        # must run both correctly. ``_auto_discover_apps`` itself runs
+        # synchronously from ``create_app`` (outside the lifespan), so an
+        # async ``ready`` is executed on a transient event loop here.
         try:
             mod = importlib.import_module(f"apps.{name}.app")
             for attr_name in dir(mod):
@@ -310,8 +341,12 @@ def _auto_discover_apps(app: FastAPI) -> None:
                     and getattr(attr, "name", None) == name
                 ):
                     config = attr()
-                    if callable(config.ready):
-                        config.ready()
+                    ready_callable = config.ready
+                    if callable(ready_callable):
+                        if inspect.iscoroutinefunction(ready_callable):
+                            asyncio.run(ready_callable())
+                        else:
+                            ready_callable()
                     break
         except ImportError:
             pass

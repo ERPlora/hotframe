@@ -54,3 +54,38 @@ class TestCLI:
         assert (tmp_path / "modules" / "blog" / "module.py").exists()
         assert (tmp_path / "modules" / "blog" / "models.py").exists()
         assert (tmp_path / "modules" / "blog" / "routes.py").exists()
+
+    def test_shell_help(self):
+        """The shell command is registered and exposes its flags."""
+        result = runner.invoke(app, ["shell", "--help"])
+        assert result.exit_code == 0
+        assert "--no-startup" in result.output
+        assert "--settings" in result.output
+        assert "--plain" in result.output
+
+    def test_shell_banner(self):
+        """The banner lists the expected variables for --no-startup mode."""
+        from hotframe.management.cli import _build_shell_banner
+
+        banner = _build_shell_banner(
+            version="9.9.9",
+            repl_name="plain",
+            namespace={"app": object(), "settings": object()},
+        )
+        assert "Hotframe 9.9.9 shell (plain)" in banner
+        assert "app" in banner
+        assert "settings" in banner
+        assert "run(coro)" in banner
+
+    def test_shell_banner_ipython(self):
+        """The IPython banner advertises native await support."""
+        from hotframe.management.cli import _build_shell_banner
+
+        banner = _build_shell_banner(
+            version="1.2.3",
+            repl_name="IPython",
+            namespace={"app": object(), "settings": object(), "db": object()},
+        )
+        assert "IPython" in banner
+        assert "autoawait asyncio" in banner
+        assert "db" in banner

@@ -32,6 +32,7 @@ from hotframe.middleware.i18n_support import register_module_locales, unregister
 from hotframe.middleware.stack_manager import MiddlewareStackManager
 
 if TYPE_CHECKING:
+    from hotframe.components.registry import ComponentRegistry
     from hotframe.signals.dispatcher import AsyncEventBus
     from hotframe.signals.hooks import HookRegistry
     from hotframe.templating.slots import SlotRegistry
@@ -54,6 +55,7 @@ class ModuleLoader:
         event_bus: AsyncEventBus,
         hooks: HookRegistry,
         slots: SlotRegistry,
+        components: ComponentRegistry | None = None,
         import_manager: ImportManager | None = None,
         stack_manager: MiddlewareStackManager | None = None,
     ) -> None:
@@ -62,6 +64,11 @@ class ModuleLoader:
         self.bus = event_bus
         self.hooks = hooks
         self.slots = slots
+        # Components registry is optional so legacy callers (and the CLI
+        # standalone ModuleRuntime instances in management/cli.py) keep
+        # working. When provided, the loader calls unregister_module on
+        # unload and rollback so components live and die with their module.
+        self.components = components
         # ImportManager tracks sys.modules per package so purge is exact
         # instead of prefix-scanning. Keeping the default factory optional
         # lets tests inject a fresh manager per test.
@@ -130,6 +137,9 @@ class ModuleLoader:
         locales_registered = False
         static_mounted = False
         middleware_added = False
+        components_registered = False
+        components_router_mounted = False
+        components_static_mounted = False
 
         try:
             # 3. HTMX routes
@@ -202,6 +212,32 @@ class ModuleLoader:
                 )
                 static_mounted = True
 
+            # 13b. Discover + mount component routers and scoped static.
+            # Components are owned by the module; routers are mounted at
+            # /_components/<name>/ and static at /_components/<name>/static.
+            if self.components is not None:
+                from hotframe.components.discovery import discover_module_components
+                from hotframe.components.mounting import (
+                    mount_component_routers_for_module,
+                    mount_component_static_for_module,
+                )
+
+                discovered = discover_module_components(
+                    self.components,
+                    module_path,
+                    module_id,
+                )
+                if discovered:
+                    components_registered = True
+                    if mount_component_routers_for_module(
+                        self.app, self.components, module_id
+                    ):
+                        components_router_mounted = True
+                    if mount_component_static_for_module(
+                        self.app, self.components, module_id
+                    ):
+                        components_static_mounted = True
+
             # 14. Bust OpenAPI cache
             self.app.openapi_schema = None
 
@@ -259,6 +295,36 @@ class ModuleLoader:
                     self.slots.unregister_module(module_id)
                 except Exception:
                     pass
+
+            # Remove components registered by the module (symmetric to
+            # the slot cleanup above). Safe to call even if the module
+            # never registered any components. Mounts MUST come off
+            # before ``unregister_module`` wipes the module->name map
+            # the mounting helpers use to resolve paths.
+            if self.components is not None:
+                if components_router_mounted:
+                    from hotframe.components.mounting import (
+                        unmount_component_routers_for_module,
+                    )
+
+                    try:
+                        unmount_component_routers_for_module(self.app, module_id)
+                    except Exception:
+                        pass
+                if components_static_mounted:
+                    from hotframe.components.mounting import (
+                        unmount_component_static_for_module,
+                    )
+
+                    try:
+                        unmount_component_static_for_module(self.app, module_id)
+                    except Exception:
+                        pass
+                if components_registered:
+                    try:
+                        self.components.unregister_module(module_id)
+                    except Exception:
+                        pass
 
             # Unregister services
             from hotframe.apps.service_facade import unregister_module_services
@@ -327,6 +393,20 @@ class ModuleLoader:
 
         # 4. Slots
         self.slots.unregister_module(module_id)
+
+        # 4b. Components (mirror of slots; skipped if no registry was
+        # injected, e.g. legacy CLI code paths). Unmount routers and
+        # static BEFORE the registry entries are dropped so the helpers
+        # can still resolve module->component-name mappings.
+        if self.components is not None:
+            from hotframe.components.mounting import (
+                unmount_component_routers_for_module,
+                unmount_component_static_for_module,
+            )
+
+            unmount_component_routers_for_module(self.app, module_id)
+            unmount_component_static_for_module(self.app, module_id)
+            self.components.unregister_module(module_id)
 
         # 5. Unregister module locales
         unregister_module_locales(module_id)

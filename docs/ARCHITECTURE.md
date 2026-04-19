@@ -1,31 +1,33 @@
 # Hotframe Architecture
 
-Este documento describe la arquitectura final de `hotframe`, un toolkit Python para construir aplicaciones web modulares con hot-mount dinámico de módulos.
+This document describes the architecture of `hotframe`, a Python web framework for building modular applications with hot-mount dynamic modules.
 
 ---
 
-## Qué es hotframe
+## What is hotframe
 
-`hotframe` es un framework Python que unifica **FastAPI + SQLAlchemy + Alembic + Jinja2 + HTMX + Alpine.js + Typer** bajo una ergonomía Django-like, añadiendo un motor de **hot-mount dinámico de módulos** (carga/descarga de plugins sin reiniciar el proceso).
+`hotframe` is a Python framework that unifies **FastAPI + SQLAlchemy + Alembic + Jinja2 + HTMX + Alpine.js + Typer + Pydantic** under a Django-like ergonomics, adding a **dynamic hot-mount module engine** (load/unload plugins without restarting the process). Pydantic powers settings, form rendering, and typed component props.
 
-### Inspirado en
+Current version: **0.0.5**.
 
-| Sistema | Qué tomamos |
-|---------|-------------|
-| Django | `AppConfig`, `manage.py`, sistema de apps, scaffolder `startapp`/`startproject`, convenciones de layout |
-| Rails Turbo | Frames nombrados, Turbo Streams, morphing, broadcasting por topic |
-| Laravel Livewire | Server-driven UI, decoradores de vista, validación inline |
-| Odoo | Registry de módulos en DB como fuente de verdad, dependencias con topological sort |
-| WordPress | Plugins con hooks (actions/filters) — aquí `signals/` |
+### Inspired by
 
-### Lo que `hotframe` NO es
+| System | What we took |
+|--------|--------------|
+| Django | `AppConfig`, `manage.py`, app system, `startapp`/`startproject` scaffolder, layout conventions |
+| Rails Turbo | Named frames, Turbo Streams, morphing, broadcasting by topic |
+| Laravel Livewire | Server-driven UI, view decorators, inline validation |
+| Odoo | DB-backed module registry as source of truth, topological sort dependencies |
+| WordPress | Plugin hooks (actions/filters) — here `signals/` |
 
-- No es un ORM (usa SQLAlchemy 2.0 tal cual).
-- No es un framework frontend (delega en HTMX + Alpine.js).
-- No es un runner de tareas (usa APScheduler/Celery/SQS por configuración).
-- No es un builder de assets (sin webpack/vite; los módulos sirven estáticos directo).
+### What hotframe is NOT
 
-### Instalación
+- Not an ORM (uses SQLAlchemy 2.0 as-is).
+- Not a frontend framework (delegates to HTMX + Alpine.js).
+- Not a task runner (uses APScheduler/Celery/SQS by configuration).
+- Not an asset builder (no webpack/vite; modules serve static files directly).
+
+### Installation
 
 ```bash
 pip install hotframe
@@ -36,255 +38,176 @@ hf startmodule blog
 hf runserver
 ```
 
-El CLI se instala con dos aliases: `hf` (corto) y `hotframe` (explícito).
+The CLI installs two aliases: `hf` (short) and `hotframe` (explicit).
 
 ---
 
-## Principios fundamentales
+## Key Principles
 
-1. **El dev solo escribe apps y módulos.** Todo lo demás es transparente.
-2. **Todo lo que el dev necesita se importa desde `hotframe`.** Una única API pública.
-3. **Cada app/módulo es autocontenido.** Sus propios `templates/`, `static/`, `locales/`, `migrations/`, `tests/`.
-4. **`hotframe/` es genérico e inmutable.** Una vez probado, no se toca. No contiene lógica de negocio ni migraciones.
-5. **Apps son estáticas (auto-registro en boot).** Módulos son dinámicos (install/uninstall en runtime).
-6. **Bootstrap declarativo vía seed.** Los system modules se declaran en migraciones de `apps/system/`.
-7. **Settings es la única interfaz entre la aplicación y hotframe.**
+1. **One public API.** Import everything from `hotframe`, not from internal submodules. `import-linter` enforces this.
+2. **Apps are auto-discovered.** `apps/*/routes.py` and `apps/*/api.py` are mounted at boot with zero config — no `INSTALLED_APPS`, no manual `include_router` calls.
+3. **Modules are dynamic.** Install, update, activate, deactivate, and uninstall at runtime without restarting.
+4. **`main.py` is 3 lines.** `create_app` + `settings` import + `app =` assignment. All logic lives in `settings.py`.
+5. **`settings.py` is the only config file.** Static files, media, CORS, middleware, modules, auth — all in one place.
+6. **Each app/module is self-contained.** Templates, static assets, migrations, and tests live inside the app/module directory.
+7. **HTMX + Alpine.js for frontend.** No React, no Vue, no build step.
+8. **Server-driven UI.** HTML over the wire, not JSON APIs.
 
 ---
 
-## Layout del proyecto
+## Architecture Layers
+
+### Runtime Layer (hotframe engine)
+
+The immutable core framework. Once stable, it does not change. Contains no business logic.
+
+- `bootstrap.py` — `create_app(settings)`: builds the FastAPI app, wires middleware, discovers apps, starts lifespan
+- `apps/` — `AppConfig`, `ModuleConfig`, registry, service facade
+- `engine/` — `ModuleRuntime`, `HotMountPipeline`, `ImportManager`, `ModuleStateDB`
+- `discovery/` — auto-scanner for `apps/*/routes.py`, `apps/*/api.py`, kernel modules
+- `middleware/` — 14 middleware classes + stack builder
+- `templating/` — Jinja2 engine with dynamic loader, HTMX helpers, Alpine helpers, slots, frame extension, icons
+- `components/` — `ComponentRegistry`, `Component` (Pydantic), Jinja2 `render_component` global + `{% component %}` tag, discovery for `apps/<app>/components/` and `modules/<id>/components/`, per-component router and static mounting
+- `signals/` — `AsyncEventBus`, `HookRegistry`, typed events
+
+### App Layer (static, boot-time)
+
+Apps live in `apps/`. Discovered and mounted once at startup. Cannot be unloaded at runtime.
+
+- Each app has an `app.py` with `AppConfig`
+- Routes auto-discovered from `routes.py` and `api.py`
+- Models, migrations, templates, static assets are self-contained
+
+### Module Layer (dynamic, runtime)
+
+Modules live in `modules/`. Installed, mounted, and unmounted at runtime via `ModuleRuntime`. State persisted in DB.
+
+- Each module has a `module.py` with `ModuleConfig`
+- Same file conventions as apps (`routes.py`, `api.py`, `models.py`, etc.)
+- Mounted dynamically by `HotMountPipeline` without restarting the process
+
+### HTMX Layer (server-driven UI)
+
+Sits on top of the view layer. Provides:
+- `@htmx_view` decorator — handles full vs partial render, auth, permissions
+- `TurboStream` / `StreamResponse` — multi-fragment OOB responses
+- `sse_stream` / `BroadcastHub` — real-time server-sent events
+- `SlotRegistry` — cross-module UI injection (modules push contributions into named extension points)
+- `ComponentRegistry` — reusable UI widgets (consumer template pulls one named widget into its markup)
+- Jinja2 helpers: `hx_get`, `hx_post`, `hx_delete`, `alpine_data`, `{% frame %}`, `render_component()`, `{% component %}`
+
+---
+
+## Project Layout
 
 ```
-proyecto-ejemplo/
-  main.py                      # 3-4 líneas: carga settings + hotframe
-  asgi.py                      # entry Uvicorn (re-export de main.app)
-  settings.py                  # Pydantic BaseSettings con TODA la config
-  manage.py                    # shim → hotframe.management.cli
+myproject/
+  main.py                  # from hotframe import create_app; app = create_app(settings)
+  asgi.py                  # from main import app  (Uvicorn entry point)
+  settings.py              # class Settings(HotframeSettings): ...
+  manage.py                # shim → hotframe.management.cli
   pyproject.toml
-  Dockerfile
-  README.md
 
-  hotframe/                    # motor de la aplicación — no se toca
-    __init__.py                  # API pública única (re-exports)
-    bootstrap.py                 # create_app(settings)
-    asgi.py                      # factory ASGI
-    lifespan.py                  # startup/shutdown orchestration
-    apps/                        # AppConfig, ModuleConfig, AppRegistry, discovery
-    routing/                     # path(), include(), HubRouter, auto-mount
-    views/                       # View, ListView, DetailView, TemplateResponse, render
-    models/                      # Model, Manager, QuerySet, mixins
-    repository/                  # BaseRepository
-    signals/                     # Signal, @receiver, pre_save, post_save, module_ready
-    orm/                         # session, @atomic, bulk, LISTEN/NOTIFY
-    migrations/                  # Alembic runner per-namespace (NO contiene migraciones)
-    engine/                      # ModuleRuntime, HotMountPipeline, Coordinator, ImportManager
-    discovery/                   # scanner por convención de nombres
-    middleware/                  # MiddlewareStackManager (double-buffer) + builtins
-    templating/                  # Jinja2 engine + ChoiceLoader dinámico + globals/slots
-    auth/                        # login_required, permission_required, CurrentUser
-    forms/                       # Form, ModelForm (opcional)
-    management/                  # CLI + commands (Django-like)
-    dev/                         # watcher, hot-reload
-    db/                          # engine factory, HubMixin, types
-    testing/                     # fixtures pytest (fresh_registry, fake_s3, temp_module_fs)
-    utils/                       # cpu_bound, importlib_ext, hashing, serialization
-    ARCHITECTURE.md              # este documento
-    TODO.md                      # plan de migración
-
-  apps/                          # apps de la aplicación (estáticas, auto-registro en boot)
-    shared/                      # layout base, assets globales, i18n, config compartida
-      app.py                     # AppConfig — boot temprano
-      models.py                  # modelos compartidos
-      routes.py
-      signals.py
-      migrations/                # migraciones de modelos compartidos
-      templates/shared/          # base.html, app_base.html, page_base.html, module_base.html
-      static/shared/             # CSS/JS globales, logos, iconos
-      locales/                   # i18n
-      tests/
+  apps/
+    shared/                # base templates, static assets, global config
+      app.py               # AppConfig (early boot)
+      routes.py            # APIRouter
+      templates/shared/    # base.html, app_base.html, page_base.html
+      static/shared/       # global CSS/JS, logos, icons
+      components/          # scaffolded by hf startproject (alert, badge)
+        alert/
+          component.py     # optional — Pydantic Component subclass
+          template.html    # required — Jinja2 template
+          routes.py        # optional — APIRouter mounted at /_components/alert/
+          static/          # optional — /_components/alert/static/...
+        badge/
+          template.html
     accounts/
       app.py
-      models.py                  # User, Role
-      routes.py
-      api.py
-      schemas.py
-      services.py
-      repository.py
-      signals.py
-      migrations/
+      models.py            # User, Role (SQLAlchemy)
+      routes.py            # APIRouter (HTMX views)
+      api.py               # APIRouter (REST endpoints)
+      schemas.py           # Pydantic schemas
+      services.py          # ModuleService subclasses
+      repository.py        # BaseRepository subclasses
+      migrations/          # Alembic revisions
       templates/accounts/
       static/accounts/
-      locales/                   # opcional
-      tests/
-    system/                      # tablas core runtime: Module, ModuleVersion
+    system/                # core runtime tables: Module, ModuleVersion
       app.py
-      models.py                  # Module, ModuleVersion
-      migrations/                # crea tabla module + seed system modules (admin)
-      tests/
-    main/
-    admin/
-
-  modules/                       # módulos dinámicos (package store) — install/activate en runtime
-    admin/                       # is_system=True (no uninstallable)
-      module.py                  # ModuleConfig
       models.py
-      routes.py
-      api.py
-      signals.py
-      migrations/
-      templates/admin/
-      static/admin/
-      tests/
+      migrations/          # creates module table + seeds system modules
+
+  modules/
     blog/
-      module.py
+      module.py            # class BlogModule(ModuleConfig)
       models.py
       routes.py
       api.py
       schemas.py
       services.py
       repository.py
-      signals.py
       migrations/
       templates/blog/
       static/blog/
+      components/          # optional — module-scoped components (hot-unloaded)
       tests/
 
-  tests/                         # E2E cross-app (install módulo → hot-mount → usar)
+  static/                  # served at STATIC_URL if directory exists
+  tests/                   # E2E cross-app tests
 ```
 
-**Cero carpetas globales de assets en el root.** `templates/`, `static/`, `locales/`, `migrations/` en root NO existen. Todo vive dentro de la app/módulo que lo posee.
+No global `templates/`, `static/`, `locales/`, or `migrations/` at the project root. Everything lives inside the app or module that owns it.
 
 ---
 
-## Diagrama 1 — Vista de alto nivel
+## Package Structure
+
+Internal `src/hotframe/` packages and what they contain:
+
+```
+src/hotframe/
+  __init__.py          <- public API: lazy re-exports (see "Public API")
+  bootstrap.py         <- create_app(settings), _auto_discover_apps, lifespan
+
+  apps/                <- AppConfig, ModuleConfig, AppRegistry, service_facade
+  auth/                <- session, password (bcrypt), JWT, CSRF, CSP, permissions, user resolution
+  components/          <- ComponentRegistry, Component (Pydantic), discovery,
+                          Jinja2 render_component + {% component %} tag,
+                          per-component router and static mounting
+  config/              <- HotframeSettings (Pydantic), DB engine factory, paths
+  db/                  <- singletons, encrypted types (Fernet), protocols (ISession etc.)
+  dev/                 <- autoreload watcher (ModuleWatcher)
+  discovery/           <- app/module scanner, kernel module bootstrap
+  engine/              <- ModuleRuntime, HotMountPipeline, ImportManager,
+                          ModuleStateDB, S3ModuleSource, MarketplaceClient,
+                          DependencyManager
+  forms/               <- FormRenderer (Pydantic -> HTML)
+  management/          <- CLI (Typer): hf startproject, startapp, startmodule, shell, modules, etc.
+  middleware/          <- 14 middleware classes + MiddlewareStackManager
+  migrations/          <- Alembic runner (single + multi-namespace); no migrations here
+  models/              <- Base, Model, HubBaseModel, mixins, HubQuery
+  orm/                 <- atomic(), ORM->EventBus bridge, PG LISTEN/NOTIFY
+  repository/          <- BaseRepository (typed CRUD)
+  signals/             <- AsyncEventBus, HookRegistry, typed events, catalog
+  storage/             <- MediaStorage (local + S3 backends)
+  templating/          <- Jinja2 engine, HTMX helpers, Alpine helpers,
+                          slots, frame extension, icons, filters
+  testing/             <- create_test_app, FakeEventBus, FakeHookRegistry
+  utils/               <- observability: logging, metrics (Prometheus), telemetry (OTEL)
+  views/               <- @htmx_view, TurboStream, StreamResponse, SSE, BroadcastHub
+```
+
+Dependency rule: lower layers never import from higher layers. `import-linter` validates this in CI.
 
 ```mermaid
 flowchart TB
-    subgraph ROOT["Root del proyecto"]
-        MAIN["main.py<br/>3-4 líneas"]
-        ASGI["asgi.py<br/>re-export"]
-        SETTINGS["settings.py<br/>Pydantic BaseSettings"]
-        MANAGE["manage.py<br/>CLI shim"]
-    end
-
-    subgraph RUNTIME["hotframe - motor (no se toca)"]
-        BOOT["bootstrap.py<br/>create_app"]
-        LIFESPAN["lifespan.py<br/>startup / shutdown"]
-        REGISTRY["AppRegistry"]
-        PIPELINE["HotMountPipeline"]
-        DISCOVERY["discovery<br/>scanner"]
-        IMPORTMGR["engine<br/>ImportManager"]
-        SUBPKGS["apps routing views models<br/>signals orm middleware templating<br/>auth management dev db testing utils"]
-    end
-
-    subgraph APPS["apps — estáticas, auto-registro en boot"]
-        SHARED["shared<br/>layout base + config"]
-        SYSTEM["system<br/>Module + seed"]
-        ACCOUNTS["accounts"]
-        OTHERS["main admin ..."]
-    end
-
-    subgraph MODULES["modules — dinámicos, install/uninstall en runtime"]
-        ADMIN["admin<br/>is_system=True"]
-        BLOG["blog"]
-        MODMORE["more"]
-    end
-
-    %% Flujo principal
-    MAIN --> SETTINGS
-    MAIN --> BOOT
-    BOOT --> LIFESPAN
-    LIFESPAN --> REGISTRY
-    LIFESPAN --> DISCOVERY
-    REGISTRY --> PIPELINE
-    PIPELINE --> IMPORTMGR
-
-    DISCOVERY -->|"scan + register"| APPS
-    PIPELINE -->|"install + mount"| MODULES
-
-    %% Herencia
-    APPS -.->|"hereda de"| SHARED
-    MODULES -.->|"hereda de"| SHARED
-
-    classDef root fill:#e8f4ff,stroke:#2563eb,stroke-width:2px
-    classDef runtime fill:#fff7ed,stroke:#ea580c,stroke-width:2px
-    classDef apps fill:#f0fdf4,stroke:#16a34a,stroke-width:2px
-    classDef modules fill:#fdf4ff,stroke:#9333ea,stroke-width:2px
-
-    class MAIN,ASGI,SETTINGS,MANAGE root
-    class BOOT,LIFESPAN,REGISTRY,PIPELINE,DISCOVERY,IMPORTMGR,SUBPKGS runtime
-    class SHARED,SYSTEM,ACCOUNTS,OTHERS apps
-    class ADMIN,BLOG,MODMORE modules
-```
-
----
-
-## Diagrama 2 — Estructura de una app/módulo (Django-like)
-
-Apps y módulos siguen el **mismo contrato**. La única diferencia es el nombre del entry point (`app.py` vs `module.py`) y el ciclo de vida (estático vs dinámico).
-
-```mermaid
-flowchart LR
-    subgraph APP["apps/[name]/ — estática, boot"]
-        A1["app.py<br/><b>AppConfig</b>"]
-        A2["models.py<br/>SQLAlchemy"]
-        A3["routes.py<br/>urlpatterns"]
-        A4["api.py<br/>APIRouter REST"]
-        A5["schemas.py<br/>Pydantic"]
-        A6["services.py<br/>@action"]
-        A7["repository.py<br/>BaseRepository"]
-        A8["signals.py<br/>@receiver"]
-        A9["migrations/<br/>Alembic"]
-        A10["templates/[name]/"]
-        A11["static/[name]/"]
-        A12["locales/ (opcional)"]
-        A13["tests/"]
-    end
-
-    subgraph MOD["modules/[name]/ — dinámica, install/uninstall runtime"]
-        M1["module.py<br/><b>ModuleConfig</b>"]
-        M2["models.py<br/>SQLAlchemy"]
-        M3["routes.py<br/>urlpatterns"]
-        M4["api.py<br/>APIRouter REST"]
-        M5["schemas.py<br/>Pydantic"]
-        M6["services.py<br/>@action"]
-        M7["repository.py<br/>BaseRepository"]
-        M8["signals.py<br/>@receiver"]
-        M9["migrations/<br/>Alembic"]
-        M10["templates/[name]/"]
-        M11["static/[name]/"]
-        M12["locales/ (opcional)"]
-        M13["tests/"]
-    end
-
-    A1 -.->|"mismo contrato"| M1
-
-    classDef app fill:#f0fdf4,stroke:#16a34a
-    classDef mod fill:#fdf4ff,stroke:#9333ea
-    classDef entry fill:#fef3c7,stroke:#d97706,stroke-width:3px
-
-    class A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13 app
-    class M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13 mod
-    class A1,M1 entry
-```
-
-**Convención:** el contenido se detecta por nombre de fichero. Si existe, se procesa. Si no, se omite. Solo `app.py`/`module.py` es obligatorio.
-
----
-
-## Diagrama 3 — Capas internas de `hotframe/`
-
-Dependencias unidireccionales. Una capa inferior NUNCA importa de una capa superior. `import-linter` lo valida en CI.
-
-```mermaid
-flowchart TB
-    MANAGEMENT["management/<br/>(CLI — capa top)"]
-    ENGINE["engine/<br/>ModuleRuntime, HotMountPipeline,<br/>ImportManager, GracefulRestartCoord."]
+    MANAGEMENT["management/<br/>(CLI — top layer)"]
+    ENGINE["engine/<br/>ModuleRuntime, HotMountPipeline,<br/>ImportManager, ModuleStateDB"]
 
     APPS_SUB["apps/<br/>AppConfig, AppRegistry"]
     DISCOVERY_SUB["discovery/<br/>scanner"]
-    ROUTING["routing/<br/>path, include"]
-    MIGRATIONS["migrations/<br/>Alembic runner<br/>(no migs propias)"]
+    MIGRATIONS["migrations/<br/>Alembic runner"]
     DEV["dev/<br/>filesystem watcher"]
 
     SIGNALS["signals/"]
@@ -295,17 +218,16 @@ flowchart TB
     FORMS["forms/"]
 
     REPOSITORY["repository/<br/>BaseRepository"]
-    MODELS["models/<br/>Model, Manager, QuerySet"]
-    ORM["orm/<br/>session, @atomic, LISTEN/NOTIFY"]
-    DB["db/<br/>protocols, engine, HubMixin, types"]
-    UTILS["utils/<br/>cpu_bound, importlib_ext, hashing"]
+    MODELS["models/<br/>Base, mixins, HubQuery"]
+    ORM["orm/<br/>atomic, ORM events, LISTEN/NOTIFY"]
+    DB["db/<br/>protocols, engine, types"]
+    UTILS["utils/<br/>observability, hashing"]
 
-    TESTING["testing/<br/>fixtures pytest<br/>(puede importar todo)"]
+    TESTING["testing/<br/>pytest utilities<br/>(can import everything)"]
 
     MANAGEMENT --> ENGINE
     ENGINE --> APPS_SUB
     ENGINE --> DISCOVERY_SUB
-    ENGINE --> ROUTING
     ENGINE --> MIGRATIONS
     ENGINE --> DEV
 
@@ -336,7 +258,7 @@ flowchart TB
     classDef test fill:#fce7f3,stroke:#db2777,stroke-dasharray:5 5
 
     class MANAGEMENT,ENGINE top
-    class APPS_SUB,DISCOVERY_SUB,ROUTING,MIGRATIONS,DEV,SIGNALS,VIEWS,TEMPLATING,MIDDLEWARE,AUTH,FORMS mid
+    class APPS_SUB,DISCOVERY_SUB,MIGRATIONS,DEV,SIGNALS,VIEWS,TEMPLATING,MIDDLEWARE,AUTH,FORMS mid
     class REPOSITORY,MODELS,ORM low
     class DB,UTILS base
     class TESTING test
@@ -344,843 +266,827 @@ flowchart TB
 
 ---
 
-## Diagrama 4 — Flujo de arranque (boot sequence)
+## Bootstrap Sequence
+
+`main.py` is always 3 lines:
+
+```python
+from hotframe import create_app
+from settings import settings
+app = create_app(settings)
+```
+
+### What `create_app` does (sync phase, before startup)
+
+1. Setup logging + OpenTelemetry
+2. Create `FastAPI` app with lifespan
+3. Build middleware stack from `settings.MIDDLEWARE`
+4. Optional `ProxyFixMiddleware` (if `PROXY_FIX_ENABLED`)
+5. Mount `CORSMiddleware` if `CORS_ORIGINS` is non-empty
+6. **Auto-discover apps** — scan `apps/*/routes.py` and `apps/*/api.py`, mount all routers (zero config, no `INSTALLED_APPS`)
+7. Mount any routers listed in `EXTRA_ROUTERS`
+8. Include broadcast router (SSE)
+9. Add `/health` endpoint
+10. Register error handlers (401 redirect, 403/405 template)
+11. Mount `StaticFiles` at `STATIC_URL` if `STATIC_ROOT` exists
+12. Mount media files at `MEDIA_URL` in dev (`MEDIA_STORAGE=local`)
+
+### Lifespan startup
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant CLI as hf runserver
     participant Main as main.py
-    participant Boot as hotframe/bootstrap.py
-    participant Life as hotframe/lifespan.py
-    participant Disc as hotframe/discovery
+    participant Boot as bootstrap.py
+    participant Disc as discovery
     participant Reg as AppRegistry
     participant DB as PostgreSQL
     participant Pipe as HotMountPipeline
     participant S3 as S3
 
     CLI->>Main: uvicorn asgi:app
-    Main->>Boot: create_app con settings
-    Boot->>Boot: init DB engine hotframe/db/
+    Main->>Boot: create_app(settings)
+    Boot->>Boot: init DB engine (config/database.py)
     Boot->>Reg: create AppRegistry
-    Boot->>Boot: create AsyncEventBus, HookRegistry
-    Boot->>Boot: create Template engine
+    Boot->>Boot: create AsyncEventBus, HookRegistry, SlotRegistry, ComponentRegistry, BroadcastHub
+    Boot->>Boot: setup ORM->EventBus bridge
+    Boot->>Boot: create Jinja2 template engine (installs render_component + {% component %})
 
-    Boot->>Life: lifespan startup
-    Life->>Disc: scan apps/
+    Boot->>Disc: scan apps/
 
-    note over Disc: orden boot:<br/>shared, system,<br/>accounts, main, ...
+    note over Disc: boot order:<br/>shared, system,<br/>accounts, main, ...
 
-    loop Para cada app descubierta
-        Disc->>Disc: import models.py, registra tablas
-        Disc->>Disc: import signals.py, activa @receiver
-        Disc->>Disc: import routes.py, mount urlpatterns
-        Disc->>Disc: import api.py, mount /api
-        Disc->>Disc: templates/[name]/, ChoiceLoader
-        Disc->>Disc: static/[name]/, StaticFiles
+    loop For each discovered app
+        Disc->>Disc: import models.py (register tables)
+        Disc->>Disc: import routes.py, mount APIRouter
+        Disc->>Disc: import api.py, mount /api APIRouter
+        Disc->>Disc: templates/[name]/ added to ChoiceLoader
+        Disc->>Disc: static/[name]/ mounted as StaticFiles
+        Disc->>Disc: components/ discovered -> ComponentRegistry
+        Disc->>Disc: mount per-component routers + static
         Disc->>Reg: register AppConfig
     end
 
-    Life->>DB: SELECT module<br/>status IN active pending
-    DB-->>Life: filas con módulos declarados
+    Boot->>Boot: create ModuleRuntime
 
-    loop Para cada módulo en DB
-        alt Código no está en disco o versión mismatch
-            Life->>Pipe: install name version
+    Boot->>DB: SELECT module WHERE status IN (active, pending)
+    DB-->>Boot: module rows
+
+    loop For each module in DB
+        alt Code not on disk or version mismatch
+            Boot->>Pipe: install name version
             Pipe->>S3: download zip
             S3-->>Pipe: zip
             Pipe->>Pipe: SHA256 + extract + migrate + import + mount
-        else Código ya presente
-            Life->>Pipe: mount name
-            Pipe->>Pipe: solo import + mount, no S3
+        else Code already present
+            Boot->>Pipe: mount name
+            Pipe->>Pipe: import + mount only (no S3)
         end
         Pipe->>Reg: register ModuleConfig
     end
 
-    Life->>Reg: apps_ready llama cfg.ready en cada app/módulo
-    Life->>Life: emit signal module_ready
+    Boot->>Reg: call cfg.ready() on each app/module (awaited if async)
+    Boot->>Boot: emit module_ready via AsyncEventBus
 
-    note over Life,Main: total boot menor a 2s
-    Life-->>Main: app listo
+    note over Boot,Main: total boot < 2s
+    Boot-->>Main: app ready
 ```
+
+During lifespan startup, `app.state` is populated with `event_bus`, `hooks`, `slots`, `components` (a `ComponentRegistry`), `broadcast_hub`, and `module_runtime`. `AppConfig.ready()` and `ModuleConfig.ready()` are called per app/module; if `ready` is declared `async def`, hotframe detects the coroutine function via `inspect.iscoroutinefunction` and awaits it — sync `ready` is still called directly.
+
+### Shutdown
+
+1. `ModuleRuntime.shutdown()`
+2. Dispose DB engine
 
 ---
 
-## Diagrama 5 — Flujo de instalación de un módulo nuevo
+## Module Lifecycle
 
-### Parte A: Dev crea y publica el módulo
+### High-level view
 
 ```mermaid
-sequenceDiagram
-    actor Dev
-    participant CLI as hf
-    participant FS as modules/billing/
-    participant Alembic as Alembic
-    participant CI as CI pipeline
-    participant S3
+flowchart TB
+    subgraph ROOT["Project Root"]
+        MAIN["main.py<br/>3 lines"]
+        ASGI["asgi.py<br/>re-export"]
+        SETTINGS["settings.py<br/>HotframeSettings subclass"]
+        MANAGE["manage.py<br/>CLI shim"]
+    end
 
-    Dev->>CLI: startmodule billing
-    CLI->>FS: genera esqueleto<br/>module.py, models.py,<br/>routes.py, api.py, ...
-    Dev->>FS: implementa lógica
-    Dev->>CLI: makemigrations billing
-    CLI->>Alembic: genera revision
-    Alembic->>FS: migrations/versions/001_initial.py
-    Dev->>CI: git push
-    CI->>CI: zip + sha256
-    CI->>S3: upload billing-1.0.0.zip
+    subgraph RUNTIME["hotframe (engine — do not modify)"]
+        BOOT["bootstrap.py<br/>create_app"]
+        REGISTRY["AppRegistry"]
+        PIPELINE["HotMountPipeline"]
+        DISCOVERY["discovery<br/>scanner"]
+        IMPORTMGR["engine<br/>ImportManager"]
+        SUBPKGS["apps auth components config db dev discovery<br/>engine forms management middleware<br/>migrations models orm repository<br/>signals storage templating testing utils views"]
+    end
+
+    subgraph APPS["apps/ — static, registered at boot"]
+        SHARED["shared<br/>base layout + config"]
+        SYSTEM["system<br/>Module table + seed"]
+        ACCOUNTS["accounts"]
+        OTHERS["main admin ..."]
+    end
+
+    subgraph MODULES["modules/ — dynamic, install/uninstall at runtime"]
+        ADMIN["admin<br/>is_system=True"]
+        BLOG["blog"]
+        MODMORE["more"]
+    end
+
+    MAIN --> SETTINGS
+    MAIN --> BOOT
+    BOOT --> REGISTRY
+    BOOT --> DISCOVERY
+    REGISTRY --> PIPELINE
+    PIPELINE --> IMPORTMGR
+
+    DISCOVERY -->|"scan + register"| APPS
+    PIPELINE -->|"install + mount"| MODULES
+
+    APPS -.->|"inherits from"| SHARED
+    MODULES -.->|"inherits from"| SHARED
+
+    classDef root fill:#e8f4ff,stroke:#2563eb,stroke-width:2px
+    classDef runtime fill:#fff7ed,stroke:#ea580c,stroke-width:2px
+    classDef apps fill:#f0fdf4,stroke:#16a34a,stroke-width:2px
+    classDef modules fill:#fdf4ff,stroke:#9333ea,stroke-width:2px
+
+    class MAIN,ASGI,SETTINGS,MANAGE root
+    class BOOT,REGISTRY,PIPELINE,DISCOVERY,IMPORTMGR,SUBPKGS runtime
+    class SHARED,SYSTEM,ACCOUNTS,OTHERS apps
+    class ADMIN,BLOG,MODMORE modules
 ```
 
-### Parte B: Cliente instala desde marketplace — HotMountPipeline
+### Module states
+
+`NOT_INSTALLED` -> `INSTALLING` -> `ACTIVE` -> `DISABLED` -> `UNINSTALLED`
+
+Error path: any state -> `ERROR` (traceback persisted, operator decides)
+
+### HotMountPipeline install flow
 
 ```mermaid
 sequenceDiagram
-    actor Cliente
-    participant API as Marketplace API
-    participant Runtime as ModuleRuntime
-    participant Download as FSDownloader
-    participant S3
+    actor User
+    participant API as ModuleRuntime
+    participant Download as Source (S3/FS/URL)
     participant Migr as MigrationRunner
     participant Pipe as HotMountPipeline
     participant Import as ImportManager
     participant Mid as MiddlewareStack
     participant DB as PostgreSQL
-    participant Workers as Otros workers
 
-    Cliente->>API: install billing
-    API->>Runtime: install billing 1.0.0
+    User->>API: install billing
+    API->>Download: fetch zip
+    Download-->>API: zip
+    API->>API: SHA256 verify + extract to modules/billing/
 
-    Runtime->>Download: fetch cpu_bound
-    Download->>S3: GET billing-1.0.0.zip
-    S3-->>Download: zip
-    Download->>Download: SHA256 verify cpu_bound
-    Download->>Download: extract_safe modules/billing/
+    API->>Migr: upgrade billing head
+    note right of Migr: runs in ThreadPool<br/>(Alembic is sync)
+    Migr-->>API: OK
 
-    Runtime->>Migr: upgrade billing head
-    note right of Migr: cpu_bound Alembic<br/>en ThreadPool
-    Migr-->>Runtime: OK
+    API->>Pipe: run billing
 
-    Runtime->>Pipe: run billing
+    Pipe->>Import: IMPORTING (track submodules)
+    Pipe->>Pipe: DISCOVER (scanner applies conventions)
+    Pipe->>Mid: BUILD STACK (double-buffer in background)
+    Pipe->>Pipe: MOUNT (routes, templates, static, services)
+    Pipe->>Mid: SWAP (atomic swap under GIL)
+    Pipe->>Pipe: BUST OpenAPI schema cache
+    Pipe->>Pipe: READY (cfg.ready() + emit module_ready)
+    Pipe->>DB: UPDATE module SET status = active
+    Pipe->>DB: pg_notify module_changes (other workers)
 
-    Pipe->>Import: IMPORTING<br/>tracking submódulos
-    Pipe->>Pipe: DISCOVER<br/>scanner aplica convenciones
-    Pipe->>Mid: BUILD STACK<br/>double-buffer en background
-    Pipe->>Pipe: MOUNT<br/>routes, signals, templates,<br/>static, services
-    Pipe->>Mid: SWAP<br/>atomic swap bajo GIL
-    Pipe->>Pipe: OPENAPI BUST
-    Pipe->>Pipe: READY<br/>cfg.ready y emit module_ready
-    Pipe->>DB: UPDATE module<br/>status a active
-    Pipe->>Workers: pg_notify<br/>module_changes
-
-    alt Éxito
-        Pipe-->>Runtime: ACTIVE
-        Runtime-->>API: 200 OK
-        API-->>Cliente: /m/billing/ disponible
-    else Fallo en cualquier paso
-        Pipe->>Pipe: RollbackHandle LIFO undo
-        Pipe-->>Runtime: ERROR
-        Runtime->>DB: UPDATE status a error
-        Runtime-->>API: 500 con traceback
+    alt Success
+        Pipe-->>API: ACTIVE
+        API-->>User: module mounted
+    else Failure at any step
+        Pipe->>Pipe: Rollback LIFO (each phase has RollbackHandle)
+        Pipe-->>API: ERROR
+        API->>DB: UPDATE module SET status = error
+        API-->>User: error with traceback
     end
 ```
 
-Tiempos objetivo:
-- **Cold** (primer install, S3 cache vacía): <2s
-- **Warm** (reinstall, S3 cache viva): <500ms
-- **Graceful restart** (fallback): <3s local
+**Target times:**
+- Cold install (S3, run migrations): < 2s
+- Warm mount (code on disk, skip download): < 500ms
+
+### `ModuleRuntime` API
+
+```python
+# Accessible at runtime via request.app.state.module_runtime
+runtime: ModuleRuntime = request.app.state.module_runtime
+
+await runtime.install(module_id, source=None)    # name, .zip path, URL, or marketplace
+await runtime.activate(module_id)                # disabled -> active
+await runtime.deactivate(module_id)              # active -> disabled
+await runtime.uninstall(module_id)               # remove
+await runtime.update(module_id, source=None)     # update with backup + auto-rollback on failure
+```
+
+Source resolution order: URL -> `.zip` path -> `MODULE_MARKETPLACE_URL` -> `modules/` directory.
 
 ---
 
-## Diagrama 6 — Hot-mount vs Graceful restart
+## App and Module Contract
+
+Apps and modules follow the same file conventions. The only difference is the entry point name (`app.py` vs `module.py`) and the lifecycle (static vs dynamic).
 
 ```mermaid
-flowchart TB
-    START["ModuleRuntime.install(module_id)"]
-    DECIDE{"requires_restart<br/>o hot-mount falló?"}
+flowchart LR
+    subgraph APP["apps/[name]/ — static, boot-time"]
+        A1["app.py<br/><b>AppConfig</b>"]
+        A2["models.py<br/>SQLAlchemy"]
+        A3["routes.py<br/>APIRouter"]
+        A4["api.py<br/>APIRouter REST"]
+        A5["schemas.py<br/>Pydantic"]
+        A6["services.py<br/>ModuleService"]
+        A7["repository.py<br/>BaseRepository"]
+        A9["migrations/<br/>Alembic"]
+        A10["templates/[name]/"]
+        A11["static/[name]/"]
+        A13["tests/"]
+    end
 
-    HOTMOUNT["HotMountPipeline<br/>(ver Diagrama 5)"]
-    ACTIVE1["ACTIVE<br/>menor a 2s cold / 500ms warm"]
+    subgraph MOD["modules/[name]/ — dynamic, install/uninstall at runtime"]
+        M1["module.py<br/><b>ModuleConfig</b>"]
+        M2["models.py<br/>SQLAlchemy"]
+        M3["routes.py<br/>APIRouter"]
+        M4["api.py<br/>APIRouter REST"]
+        M5["schemas.py<br/>Pydantic"]
+        M6["services.py<br/>ModuleService"]
+        M7["repository.py<br/>BaseRepository"]
+        M9["migrations/<br/>Alembic"]
+        M10["templates/[name]/"]
+        M11["static/[name]/"]
+        M13["tests/"]
+    end
 
-    COORD{"GracefulRestartCoordinator<br/>detecta entorno"}
-    LOCAL["Local (dev)<br/>multiprocessing<br/>+ SO_REUSEPORT<br/>+ drain requests"]
-    ECS_MULTI["ECS multi-task<br/>ALB target draining<br/>+ rolling deploy"]
-    ECS_MIN1["ECS min=1<br/>hot-mount best-effort<br/>⚠ 2s 503 inevitable"]
+    A1 -.->|"same contract"| M1
 
-    ACTIVE2["ACTIVE nuevo worker<br/>menor a 3s local<br/>30-60s ECS rolling"]
+    classDef app fill:#f0fdf4,stroke:#16a34a
+    classDef mod fill:#fdf4ff,stroke:#9333ea
+    classDef entry fill:#fef3c7,stroke:#d97706,stroke-width:3px
 
-    START --> DECIDE
-    DECIDE -->|"NO"| HOTMOUNT
-    HOTMOUNT --> ACTIVE1
-    DECIDE -->|"YES"| COORD
-    COORD -->|"desarrollo"| LOCAL
-    COORD -->|"producción multi-task"| ECS_MULTI
-    COORD -->|"producción min=1"| ECS_MIN1
-    LOCAL --> ACTIVE2
-    ECS_MULTI --> ACTIVE2
-    ECS_MIN1 --> ACTIVE2
-
-    classDef start fill:#e0e7ff,stroke:#4f46e5
-    classDef decide fill:#fef3c7,stroke:#d97706
-    classDef hot fill:#dcfce7,stroke:#16a34a
-    classDef restart fill:#fee2e2,stroke:#dc2626
-    classDef active fill:#f0fdf4,stroke:#16a34a,stroke-width:3px
-
-    class START start
-    class DECIDE,COORD decide
-    class HOTMOUNT hot
-    class LOCAL,ECS_MULTI,ECS_MIN1 restart
-    class ACTIVE1,ACTIVE2 active
+    class A2,A3,A4,A5,A6,A7,A9,A10,A11,A13 app
+    class M2,M3,M4,M5,M6,M7,M9,M10,M11,M13 mod
+    class A1,M1 entry
 ```
 
----
+**Convention:** files are detected by name. If present, they are processed. If absent, they are skipped. Only `app.py` / `module.py` is required.
 
-## Diagrama 7 — Detección de fallos en hot-mount
+### How routing works
 
-Hay **dos tipos de fallo** con mecanismos de detección distintos:
+Apps and modules use standard FastAPI `APIRouter`. There is no `path()`, `include()`, or `urlpatterns`.
 
-```mermaid
-flowchart TB
-    RUN["HotMountPipeline.run(module_id)"]
-    EXEC["Ejecuta fases:<br/>DOWNLOAD → EXTRACT → VALIDATE →<br/>MIGRATE → IMPORT → MOUNT → SWAP"]
-    CATCH{"Excepción<br/>en alguna fase?"}
-
-    ROLLBACK["Rollback LIFO<br/>(cada fase tiene RollbackHandle)"]
-    MARK_ERR["DB: UPDATE status=error<br/>+ traceback guardado<br/>+ métrica hotframe_module_mount_errors_total"]
-    CLASSIFY{"Tipo de error?"}
-
-    TRANSIENT["Transient<br/>(S3 5xx, timeout red)"]
-    KNOWN["No-recuperable conocido<br/>(MetaclassConflict,<br/>CExtensionError,<br/>SchemaConflict)"]
-    UNKNOWN["Desconocido"]
-
-    RETRY["Reintentar<br/>(exp backoff, max 3)"]
-    GRACEFUL["GracefulRestartCoordinator"]
-    STAY_ERR["status=error<br/>(no auto-restart)<br/>Alerta al operador"]
-
-    VERIFY["ImportManager.verify_clean_state()"]
-    CHECKS["1. Weakref check<br/>   (clases viejas vivas?)<br/>2. version_token check<br/>   (id de clase coincide?)<br/>3. sys.modules audit<br/>   (submódulos esperados?)"]
-    ZOMBIE{"Zombies<br/>detectados?"}
-
-    METRIC["Incrementa<br/>hotframe_zombie_classes_total<br/>+ log con referrers"]
-    THRESHOLD{"Supera umbral<br/>mayor que 0 tras 30s?"}
-
-    ACTIVE["ACTIVE<br/>(saludable)"]
-    ACTIVE_WARN["ACTIVE con warning<br/>(zombies presentes<br/>pero bajo umbral)"]
-
-    RUN --> EXEC
-    EXEC --> CATCH
-    CATCH -->|"SÍ, fallo inmediato"| ROLLBACK
-    ROLLBACK --> MARK_ERR
-    MARK_ERR --> CLASSIFY
-    CLASSIFY -->|"error 5xx o timeout"| TRANSIENT
-    CLASSIFY -->|"sys.modules corrupto o C-ext recargada"| KNOWN
-    CLASSIFY -->|"no clasificable"| UNKNOWN
-    TRANSIENT --> RETRY
-    RETRY -->|"falla 3x"| STAY_ERR
-    KNOWN --> GRACEFUL
-    UNKNOWN --> STAY_ERR
-
-    CATCH -->|"NO, aparente éxito"| VERIFY
-    VERIFY --> CHECKS
-    CHECKS --> ZOMBIE
-    ZOMBIE -->|"NO"| ACTIVE
-    ZOMBIE -->|"SÍ"| METRIC
-    METRIC --> THRESHOLD
-    THRESHOLD -->|"NO"| ACTIVE_WARN
-    THRESHOLD -->|"SÍ, leak real"| GRACEFUL
-
-    classDef run fill:#e0e7ff,stroke:#4f46e5
-    classDef exec fill:#fef3c7,stroke:#d97706
-    classDef fail fill:#fee2e2,stroke:#dc2626
-    classDef ok fill:#f0fdf4,stroke:#16a34a,stroke-width:3px
-    classDef warn fill:#fef9c3,stroke:#ca8a04
-    classDef decide fill:#ede9fe,stroke:#7c3aed
-
-    class RUN,EXEC run
-    class ROLLBACK,MARK_ERR,TRANSIENT,KNOWN,UNKNOWN,STAY_ERR fail
-    class RETRY,GRACEFUL warn
-    class VERIFY,CHECKS,METRIC warn
-    class ACTIVE,ACTIVE_WARN ok
-    class CATCH,CLASSIFY,ZOMBIE,THRESHOLD decide
-```
-
-### Tipo 1 — Fallo inmediato (excepción durante el pipeline)
-
-Cada fase del pipeline está envuelta en `try/except`. La detección es síncrona:
-
+**`apps/accounts/routes.py`:**
 ```python
-async def run(self, module_id: str) -> InstallReport:
-    rollback_stack: list[RollbackHandle] = []
-    try:
-        for phase_fn in [download, extract, validate, migrate,
-                         import_pkg, mount, swap_stack, bust_openapi, ready]:
-            handle = await asyncio.wait_for(
-                phase_fn(...),
-                timeout=self.PHASE_TIMEOUTS[phase_fn.__name__],
-            )
-            rollback_stack.append(handle)
-        return InstallReport(status="active")
-    except (ImportError, MetaclassConflict, SchemaConflict,
-            SHA256Mismatch, AlembicError, TimeoutError) as exc:
-        await self._rollback(rollback_stack)
-        await self._mark_error(module_id, exc)
-        raise HotMountFailed(phase_fn.__name__, exc) from exc
+from fastapi import APIRouter
+from . import views
+
+router = APIRouter()
+
+router.get("/login")(views.login)
+router.get("/profile")(views.profile)
 ```
 
-**Errores capturados:**
-- `ImportError` al `importlib.import_module(pkg)`
-- `MetaclassConflict` en registro SQLAlchemy
-- `SchemaConflict` (dos módulos con mismo table prefix)
-- `CExtensionImportError` (librería nativa no recargable)
-- `TimeoutError` (cada fase tiene `asyncio.wait_for` con timeout propio)
-- `SHA256Mismatch`, `PathTraversalError` en ZIP
-- `AlembicError` en migración
-
-**Clasificación automática del error** para decidir qué hacer:
-
-| Tipo | Ejemplos | Acción |
-|------|----------|--------|
-| Transient | S3 5xx, timeout de red | Retry con exponential backoff (max 3) |
-| No-recuperable conocido | MetaclassConflict, CExtensionImportError, SchemaConflict | Dispara `GracefulRestartCoordinator` |
-| Desconocido | Cualquier otro | `status='error'` en DB, alerta al operador, no auto-restart |
-
-### Tipo 2 — Fallo diferido (zombies tras "éxito aparente")
-
-El pipeline puede completar sin excepción pero dejar estado corrupto. Este es el caso más sutil de Python: `sys.modules.pop()` no libera clases si hay referencias colgantes (Pydantic cache, SQLAlchemy mappers, signal receivers, FastAPI DI).
-
-**`ImportManager.verify_clean_state()`** ejecuta 3 checks tras cada reload:
-
+**`apps/accounts/api.py`:**
 ```python
-async def verify_clean_state(self, module_id: str) -> bool:
-    ok = True
+from fastapi import APIRouter
 
-    # Check 1 — Weakref verification
-    for ref in self._old_class_refs[module_id]:
-        if ref() is not None:
-            # Clase vieja sigue viva → zombie
-            referrers = gc.get_referrers(ref())
-            logger.warning(
-                "zombie class", module=module_id,
-                class_name=ref().__name__, referrers=referrers,
-            )
-            METRIC_ZOMBIES.labels(module=module_id).inc()
-            ok = False
+api_router = APIRouter(prefix="/api/accounts")
 
-    # Check 2 — Version token
-    for cls in self._newly_loaded[module_id]:
-        if getattr(cls, "__hub_version_token__", None) != self._expected_token:
-            logger.error("token mismatch", module=module_id, class_name=cls.__name__)
-            ok = False
-
-    # Check 3 — sys.modules audit
-    expected = set(self._imported_submodules[module_id])
-    actual = {k for k in sys.modules if k.startswith(module_id + ".")}
-    stale = actual - expected
-    if stale:
-        logger.error("stale submodules", module=module_id, stale=stale)
-        ok = False
-
-    return ok
+@api_router.get("/me")
+async def me(): ...
 ```
 
-Si `verify_clean_state()` devuelve `False`:
-- Métrica `hotframe_zombie_classes_total{module}` incrementa
-- Log con `gc.get_referrers` para diagnóstico
-- Si supera umbral (>0 tras 30s de grace period) → dispara `GracefulRestartCoordinator` asíncrono
-- Si no supera umbral → ACTIVE con warning (se acumula deuda técnica hasta el próximo deploy)
+The discovery scanner looks for `router` in `routes.py` and `api_router` in `api.py`. Both are mounted automatically at boot (for apps) or at hot-mount time (for modules).
 
-### Tipo 3 — Fallo "silencioso" en runtime (después de ACTIVE)
+### AppConfig
 
-Un módulo puede montar bien y fallar minutos después (memory leak, fd leak, deadlock, excepción sin capturar). Esto **NO es responsabilidad del pipeline** — es monitorización normal:
-
-- Healthcheck HTTP del módulo expuesto por `ModuleConfig.healthcheck()` (opcional)
-- Métricas Prometheus: error rate, p95 latency, active connections por módulo
-- Logs a Sentry / observabilidad externa
-
-Si se detecta, el operador puede ejecutar manualmente:
-```
-hf modules reload <id>
-# o, si el módulo corrompió todo el proceso:
-hf modules restart <id>   # dispara GracefulRestart
-```
-
-### Resumen: ¿cómo se sabe que hot-mount falló?
-
-| Señal | Origen | Respuesta |
-|-------|--------|-----------|
-| Excepción durante el pipeline | Phase `try/except` + rollback | Clasificación + retry o graceful restart |
-| `verify_clean_state()` devuelve False | `ImportManager` tras mount | Métrica + graceful restart si supera umbral |
-| Métrica `hotframe_zombie_classes_total > 0` sostenido | Prometheus alarma | Dispara graceful restart automático |
-| Healthcheck del módulo falla | Módulo mismo o monitor externo | Alerta operador |
-| Error rate del módulo sube | APM / Prometheus | Alerta operador, posible reload manual |
-| `status='error'` en `module` | Persistido tras rollback | UI del marketplace muestra el error, operador decide |
-
-**Regla:** el pipeline NUNCA deja el sistema en estado ambiguo. O termina con `status='active'` (y `verify_clean_state()=True`), o con `status='error'` y traceback completo persistido.
-
----
-
-## Contrato público de `hotframe`
-
-**Regla de oro:** el dev NUNCA importa de `hotframe.<sub>.<modulo>` directamente. Todo desde `hotframe` raíz. `import-linter` lo enforzea.
-
-```python
-from hotframe import (
-    # Apps
-    AppConfig, ModuleConfig,
-    # Routing
-    path, include, HubRouter, view,
-    # Views
-    View, ListView, DetailView, CreateView, UpdateView, DeleteView,
-    TemplateResponse, render, redirect, HTMXResponse, SSEResponse,
-    # Models
-    Model, Manager, QuerySet,
-    TimestampMixin, SoftDeleteMixin, TenantMixin,
-    # Repository
-    BaseRepository,
-    # DB Protocols
-    ISession, IQueryBuilder, IRepository,
-    # Signals
-    Signal, receiver,
-    pre_save, post_save, pre_delete, post_delete,
-    module_ready, request_started, request_finished,
-    # ORM
-    get_session, atomic, bulk_insert, listen, notify,
-    # Auth
-    login_required, permission_required, CurrentUser,
-    # Forms (opcional)
-    Form, ModelForm,
-    # Settings
-    BaseSettings,
-    # Management
-    BaseCommand,
-    # Services
-    ModuleService, action,
-    # Utils
-    cpu_bound,
-)
-```
-
-`hotframe/__init__.py` define `__all__` cerrado. Linter rule prohíbe `from hotframe.routing.router import ...` fuera de `hotframe/` mismo.
-
----
-
-## Capa HTMX (Turbo/Livewire-style)
-
-`hotframe` incluye una capa de ergonomía HTMX equivalente a Turbo (Rails) y Livewire (Laravel), integrada con el templating engine.
-
-### Componentes
-
-1. **Decoradores** en `hotframe.views`:
-   - `@htmx_view` — detecta `HX-Request`, `HX-Boosted`, `HX-Target`, `HX-Trigger`. Renderiza layout completo en navegación directa o partial en petición HTMX.
-   - `@page_view` — solo render de página completa (fuerza layout).
-   - `@partial_view` — solo fragmento.
-
-2. **Respuestas tipadas** en `hotframe.views.responses`:
-   - `HTMXResponse(template, ctx, headers={"HX-Trigger": "..."})` — respuesta HTMX con headers tipados.
-   - `TurboStream(action, target, template, ctx)` — acciones `append | prepend | replace | remove | morph | before | after`. Múltiples streams en una respuesta.
-   - `OOBSwap(target, template, ctx)` — out-of-band swaps de alto nivel.
-   - `SSEResponse` — server-sent events integrado con `AsyncEventBus`.
-   - `WebSocketFrame` — broadcast por topic sobre WS.
-
-3. **Helpers de Jinja** en `hotframe.templating.extensions`:
-   - `{% frame "sidebar" %}...{% endframe %}` — frames nombrados target-ables.
-   - `{{ hx_get(url, target=..., swap=..., trigger=...) }}` — genera atributos `hx-*` validados.
-   - `{{ hx_post(...) }}`, `{{ hx_put(...) }}`, `{{ hx_delete(...) }}`.
-   - `{{ hx_indicator("#spinner") }}`, `{{ hx_confirm("¿Seguro?") }}`.
-   - `{% slot "navbar" %}` — slots extensibles entre módulos (integra con `SlotRegistry`).
-
-4. **Middleware** — `request.state.htmx` con estructura tipada:
-
-```python
-request.state.htmx.is_request: bool
-request.state.htmx.target: str | None
-request.state.htmx.trigger: str | None
-request.state.htmx.boosted: bool
-request.state.htmx.current_url: str | None
-```
-
-5. **Broadcasting por topic** — puente `AsyncEventBus` ↔ SSE/WS:
-
-```python
-# Publicador
-await bus.publish("chat:room:42", {"user": "alice", "text": "hello"})
-
-# Subscripción vía SSE
-@htmx_view
-async def room_stream(request, room_id: int):
-    return SSEResponse(topic=f"chat:room:{room_id}")
-```
-
-Equivalente funcional a Turbo Streams over WebSocket.
-
-6. **Alpine.js integración** — extension de Jinja que serializa estado Pydantic a `x-data` con escape seguro y Trusted Types:
-
-```html
-<div {{ alpine_data(my_pydantic_model) }}>
-    <span x-text="name"></span>
-</div>
-```
-
-7. **Forms HTMX-aware** — `hotframe.forms.ModelForm` renderiza con atributos `hx-*` por defecto y validación inline (errores como partials sin full reload).
-
-### Ejemplo mínimo
-
-```python
-from hotframe import View, HTMXResponse, TurboStream, path
-from hotframe.views import htmx_view
-
-@htmx_view
-async def add_todo(request):
-    todo = await Todo.create(title=request.form["title"])
-    return TurboStream.append(target="#todo-list", template="todo_item.html", ctx={"todo": todo})
-
-urlpatterns = [
-    path("todos/", add_todo, methods=["POST"]),
-]
-```
-
-```html
-<!-- todos.html -->
-<form {{ hx_post("/todos/", target="#todo-list", swap="beforeend") }}>
-    <input name="title">
-    <button>Add</button>
-</form>
-<ul id="todo-list">
-    {% for todo in todos %}
-        {% include "todo_item.html" %}
-    {% endfor %}
-</ul>
-```
-
-### Scope excluido
-
-- Componentes JS reactivos (delegado a Alpine.js).
-- Routing cliente (delegado a HTMX `hx-push-url`).
-- State management cliente (delegado a Alpine `x-data` + servidor como fuente de verdad).
-
----
-
-## Capa de abstracción de persistencia (DB Protocols)
-
-`hotframe` desacopla su API pública de SQLAlchemy mediante `Protocol` classes (tipado estructural). El código de módulos y apps depende de interfaces abstractas, no de `AsyncSession` directamente.
-
-### Protocolos disponibles
-
-| Protocolo | Qué abstrae | Implementación por defecto |
-|---|---|---|
-| `ISession` | Sesión async de DB (execute, add, flush, commit, rollback, delete, transacciones) | `AsyncSession` (SQLAlchemy) |
-| `IExecuteResult` | Resultado de `session.execute()` | `CursorResult` (SQLAlchemy) |
-| `IScalarResult` | Resultado de `result.scalars()` | `ScalarResult` (SQLAlchemy) |
-| `IQueryBuilder[T]` | Query builder chainable async | `HubQuery` |
-| `IRepository[T]` | Repositorio CRUD tipado | `BaseRepository` |
-
-### Dónde viven
-
-```
-hotframe/db/protocols.py     ← definición de los 5 protocolos
-hotframe/db/__init__.py      ← re-exports
-hotframe/__init__.py          ← lazy imports (from hotframe import ISession)
-```
-
-### Ficheros que usan `ISession` (en vez de `AsyncSession`)
-
-| Capa | Ficheros |
-|---|---|
-| API pública | `auth/current_user.py` (DbSession), `apps/service_facade.py` (ModuleService) |
-| Query/Repo | `models/queryset.py` (HubQuery), `repository/base.py` (BaseRepository) |
-| Transacciones | `orm/transactions.py` (atomic, on_commit) |
-| Singletons | `db/singletons.py` (SingletonMixin) |
-| Engine | `engine/state.py`, `engine/dependency.py`, `engine/lifecycle.py`, `engine/module_runtime.py` |
-| Discovery | `discovery/bootstrap.py` |
-
-### Qué NO se abstrae
-
-- **Modelos** (`DeclarativeBase`, `mapped_column`) — son el schema, inherentemente ORM
-- **Migraciones** (Alembic) — inherentemente SQL
-- **ORM events** (`orm/events.py`) — hooks de SQLAlchemy Mapper
-- **PgNotifyBridge** (`orm/listeners.py`) — PostgreSQL puro
-- **Custom types** (`EncryptedString`, `EncryptedText`) — SQLAlchemy TypeDecorator
-- **Testing infra** (`testing/__init__.py`) — intencionalmente SQLAlchemy
-
-### Ejemplo de uso en un módulo
-
-```python
-from hotframe import ModuleService, ISession
-
-class OrderService(ModuleService):
-    # self.db: ISession (no AsyncSession)
-    # self.q(Model) → IQueryBuilder[Model]
-    # self.repo(Model) → IRepository[Model]
-
-    async def get_pending(self):
-        return await self.q(Order).filter(Order.status == "pending").all()
-```
-
----
-
-## Ejemplos de uso
-
-### Los 3 ficheros del root
-
-**`main.py`:**
-```python
-from hotframe import create_app
-from settings import settings
-
-app = create_app(settings)
-```
-
-**`asgi.py`:**
-```python
-from main import app  # re-export para Uvicorn
-# uvicorn asgi:app
-```
-
-**`settings.py`:**
-```python
-from hotframe import BaseSettings
-
-class Settings(BaseSettings):
-    DATABASE_URL: str
-    HUB_ID: str
-    S3_MODULES_BUCKET: str
-    CORS_ORIGINS: list[str] = []
-    MIDDLEWARE: list[str] = [...]
-    TEMPLATE_DIRS: list[str] = []
-    # ... todas las configs de la aplicación
-
-settings = Settings()
-```
-
-### Una app de la aplicación
-
-**`apps/accounts/app.py`:**
 ```python
 from hotframe import AppConfig
 
 class AccountsConfig(AppConfig):
     name = "accounts"
-    verbose_name = "Accounts"
+    label = "Accounts"
     mount_prefix = "/accounts"
 
     def ready(self):
-        from . import signals  # noqa
+        from . import signals  # noqa — connect event bus listeners
 ```
 
-**`apps/accounts/models.py`:**
-```python
-from hotframe import Model, TimestampMixin, SoftDeleteMixin
-from sqlalchemy.orm import Mapped, mapped_column
+### ModuleConfig
 
-class User(Model, TimestampMixin, SoftDeleteMixin):
-    __tablename__ = "accounts_users"
-    email: Mapped[str] = mapped_column(unique=True, index=True)
-```
-
-**`apps/accounts/routes.py`:**
-```python
-from hotframe import path, include
-from . import views
-
-urlpatterns = [
-    path("", views.LoginView.as_view(), name="login"),
-    path("profile/", views.ProfileView.as_view(), name="profile"),
-    path("api/", include("apps.accounts.api")),
-]
-```
-
-**`apps/accounts/signals.py`:**
-```python
-from hotframe import receiver, post_save
-from .models import User
-
-@receiver(post_save, sender=User)
-async def welcome_email(sender, instance, created, **kw):
-    if created:
-        ...
-```
-
-### Un módulo dinámico
-
-**`modules/blog/module.py`:**
 ```python
 from hotframe import ModuleConfig
 
 class BlogModule(ModuleConfig):
-    name = "blog"
-    verbose_name = "Blog"
-    mount_prefix = "/m/blog"
-    dependencies = ["accounts"]
-    requires_restart = False
-    version = "1.2.0"
+    module_id = "blog"
+    has_views = True     # mounts routes.py
+    has_api = True       # mounts api.py
 
-    async def install(self, ctx): ...   # seeding inicial
-    async def uninstall(self, ctx): ...  # limpieza idempotente
+    async def install(self, ctx): ...    # initial seeding
+    async def uninstall(self, ctx): ... # idempotent cleanup
 
     def ready(self):
         from . import signals  # noqa
 ```
 
-### Un management command
+---
 
-**`apps/blog/management/commands/publish.py`:**
+## Public API
+
+All 64 symbols are importable from `from hotframe import X`. Never import from internal submodules.
+
+### Bootstrap
+
+| Symbol | Description |
+|--------|-------------|
+| `create_app` | Build and return the FastAPI application |
+
+### Settings
+
+| Symbol | Description |
+|--------|-------------|
+| `HotframeSettings` | Base Pydantic settings class; subclass in `settings.py` |
+| `get_settings` | Dependency that returns the current settings instance |
+
+### Apps
+
+| Symbol | Description |
+|--------|-------------|
+| `AppConfig` | Base class for static apps |
+| `ModuleConfig` | Base class for dynamic modules |
+
+### Models
+
+| Symbol | Description |
+|--------|-------------|
+| `Base` | SQLAlchemy `DeclarativeBase` |
+| `Model` | `Base` + `HubMixin` + `TimestampMixin` convenience alias |
+| `HubBaseModel` | Base with hub isolation |
+| `TimeStampedModel` | Base + `TimestampMixin` |
+| `ActiveModel` | Base + `SoftDeleteMixin` |
+| `HubMixin` | Adds `hub_id` column + auto-filter |
+| `TimestampMixin` | `created_at`, `updated_at` |
+| `AuditMixin` | `created_by`, `updated_by` |
+| `SoftDeleteMixin` | `deleted_at`, `is_deleted` |
+| `HubQuery` | Chainable async query builder implementing `IQueryBuilder` |
+
+### Repository
+
+| Symbol | Description |
+|--------|-------------|
+| `BaseRepository` | Generic typed CRUD repository (list, get, create, update, delete, count, exists) |
+
+### DB Protocols
+
+| Symbol | Description |
+|--------|-------------|
+| `ISession` | Abstract async session (execute, add, flush, commit, rollback, delete) |
+| `IQueryBuilder` | Abstract chainable query builder |
+| `IRepository` | Abstract typed CRUD repository |
+| `IExecuteResult` | Abstract result of `session.execute()` |
+| `IScalarResult` | Abstract result of `result.scalars()` |
+
+### Signals
+
+| Symbol | Description |
+|--------|-------------|
+| `AsyncEventBus` | Async pub/sub bus: `subscribe(event_name, handler)`, `emit(event_name, **data)` |
+| `HookRegistry` | WordPress-style hooks: `add_action`, `do_action`, `add_filter`, `apply_filters` |
+| `BaseEvent` | Pydantic base class for typed events |
+| `register_event` | Decorator to register a typed event in the catalog |
+
+### ORM
+
+| Symbol | Description |
+|--------|-------------|
+| `setup_orm_events` | Wire SQLAlchemy mapper events -> `AsyncEventBus` auto-emit on save/delete |
+
+### Views
+
+| Symbol | Description |
+|--------|-------------|
+| `htmx_view` | Decorator: auth, permissions, full/partial render, template auto-discovery |
+| `is_htmx_request` | Returns `True` if `HX-Request` header is present |
+| `htmx_redirect` | Response with `HX-Redirect` header |
+| `htmx_refresh` | Response with `HX-Refresh: true` header |
+| `htmx_trigger` | Response with `HX-Trigger` header |
+| `add_message` | Flash message (HTMX or session-based) |
+| `sse_stream` | Generator helper for server-sent events |
+| `TurboStream` | Build a single OOB stream fragment |
+| `StreamResponse` | Combine multiple `TurboStream` instances into one response |
+| `BroadcastHub` | Pub/sub hub for SSE topics |
+
+### Templating
+
+| Symbol | Description |
+|--------|-------------|
+| `SlotRegistry` | Cross-module UI injection: `register(slot, template, module_id, priority)` |
+
+### Components
+
+| Symbol | Description |
+|--------|-------------|
+| `Component` | Pydantic base class for Python-declared components (typed props + optional `context()`) |
+| `ComponentEntry` | Dataclass describing a registered component (name, template path, props class, module_id) |
+| `ComponentRegistry` | In-memory registry of components; an instance lives on `app.state.components` |
+
+### Auth
+
+| Symbol | Description |
+|--------|-------------|
+| `get_session_user_id` | Extract user ID from signed session cookie |
+| `hash_password` | Bcrypt hash |
+| `verify_password` | Bcrypt verify |
+| `has_permission` | `fnmatch`-based permission check |
+| `require_permission` | FastAPI dependency — raises 403 if denied |
+
+### Dependencies (FastAPI `Depends`)
+
+| Symbol | Type | Description |
+|--------|------|-------------|
+| `DbSession` | `Annotated[ISession, Depends(get_db)]` | Async DB session |
+| `CurrentUser` | `Annotated[UserModel, Depends(get_current_user)]` | Authenticated user (raises 401 if not logged in) |
+| `OptionalUser` | `Annotated[UserModel | None, ...]` | User or `None` |
+| `EventBus` | `Annotated[AsyncEventBus, ...]` | Event bus from `app.state` |
+| `Hooks` | `Annotated[HookRegistry, ...]` | Hook registry from `app.state` |
+| `Slots` | `Annotated[SlotRegistry, ...]` | Slot registry from `app.state` |
+| `get_db` | Callable | Low-level session factory (prefer `DbSession`) |
+| `get_current_user` | Callable | Low-level user resolver (prefer `CurrentUser`) |
+
+### Services
+
+| Symbol | Description |
+|--------|-------------|
+| `ModuleService` | Base class for service objects; receives `db: ISession`, `q()`, `repo()` |
+| `action` | Decorator to expose a service method as a named action |
+
+### Engine
+
+| Symbol | Description |
+|--------|-------------|
+| `ModuleStateDB` | CRUD on the `module` table (status, version, metadata) |
+| `HotMountPipeline` | Executes the install/mount phases with per-phase rollback |
+| `ImportManager` | Manages Python module import/purge, submodule tracking, zombie verification |
+| `MarketplaceClient` | HTTP client for the module marketplace |
+
+### Forms
+
+| Symbol | Description |
+|--------|-------------|
+| `FormRenderer` | Render Pydantic models as HTML form fields |
+
+### Config
+
+| Symbol | Description |
+|--------|-------------|
+| `get_engine` | Returns the SQLAlchemy `AsyncEngine` singleton |
+| `get_session_factory` | Returns the `async_sessionmaker` singleton |
+
+### Storage
+
+| Symbol | Description |
+|--------|-------------|
+| `MediaStorage` | File storage abstraction (local filesystem or S3) |
+| `get_media_storage` | Returns the configured `MediaStorage` instance |
+
+---
+
+## HTMX Layer
+
+### `@htmx_view` decorator
+
 ```python
-from hotframe import BaseCommand
+from fastapi import APIRouter
+from hotframe import htmx_view
 
-class Command(BaseCommand):
-    help = "Publish scheduled posts"
+router = APIRouter()
 
-    def add_arguments(self, parser):
-        parser.add_argument("--before", type=str)
-
-    async def handle(self, *, before: str | None = None): ...
+@router.get("/m/todo/list/")
+@htmx_view(module_id="todo", view_id="list", permissions="todo.view")
+async def todo_list(request):
+    return {"todos": await get_todos(), "page_title": "Todos"}
 ```
 
-Uso: `hf publish --before 2026-01-01`
+What the decorator handles:
+- Auth check (redirects to `AUTH_LOGIN_URL` if unauthenticated)
+- Permission check (raises 403 if denied)
+- `HX-Request` detection: renders full page on direct navigation, partial on HTMX request
+- Template auto-discovery: `{module}/partials/{view}.html` (partial), `{module}/pages/{view}.html` (full)
+- Return a dict -> auto-rendered to template; return a `Response` -> passed through as-is
 
----
+### TurboStream (multi-fragment responses)
 
-## Bootstrap de system modules
-
-Cualquier módulo crítico se declara en una **migración de `apps/system/`**:
-
-**`apps/system/migrations/versions/0050_seed_system_modules.py`:**
 ```python
-SYSTEM_MODULES = [
-    {
-        "name": "admin",
-        "version": "1.8.0",
-        "s3_key": "modules/admin/v1.0.0.zip",
-        "sha256": "abc123...",
-    },
-]
+from hotframe import TurboStream, StreamResponse
 
-def upgrade():
-    for mod in SYSTEM_MODULES:
-        op.execute(
-            "INSERT INTO module (...) VALUES (...) "
-            "ON CONFLICT (name) DO UPDATE SET version=EXCLUDED.version, ..."
-        )
+return StreamResponse(
+    TurboStream.append("#todo-list", html=rendered_item),
+    TurboStream.text("#todo-count", str(count)),
+    TurboStream.remove("#empty-state"),
+)
 ```
 
-**Flujo:**
-1. `hf migrate` aplica el seed → `module` tiene fila para `admin`
-2. Primer arranque → runtime detecta `admin` en DB pero no en `modules/`
-3. `HotMountPipeline.install("admin", "1.8.0")` descarga módulos remotos + monta
-4. Bump de versión = nueva migración de seed → siguiente arranque reinstala
+Actions: `append`, `prepend`, `replace`, `update`, `remove`, `before`, `after`, `morph`, `text`
 
-**`is_system=True`** previene uninstall desde API/UI. Solo se actualiza vía migración.
+### Broadcasting (real-time SSE)
+
+```python
+# Publish to a topic
+hub = get_broadcast_hub(request)
+await hub.publish("todos", TurboStream.append("#list", html=item_html).to_oob_html())
+
+# Subscribe in template
+{{ stream_from("todos") }}
+```
+
+Endpoints:
+- Single topic: `GET /stream/{topic}`
+- Multiplexed: `GET /stream/_mux?topics=a,b,c`
+- WebSocket: `/ws/stream/{topic}`
+
+### Jinja2 HTMX helpers
+
+```html
+<!-- GET request with inline search -->
+<input {{ hx_get(url_for('search'), trigger="input changed delay:300ms", target="#results") }}>
+
+<!-- POST with swap -->
+<form {{ hx_post(url_for('todo.create'), target="#list", swap="beforeend") }}>
+
+<!-- DELETE with confirmation -->
+<button {{ hx_delete(url_for('todo.delete', id=todo.id), confirm="Are you sure?") }}>
+```
+
+All helpers: `hx_get`, `hx_post`, `hx_put`, `hx_patch`, `hx_delete`, `hx_trigger`, `hx_indicator`, `hx_vals`
+
+### Jinja2 Alpine helpers
+
+```html
+<div {{ alpine_data({"count": 0, "open": false}) }}>
+<div {{ alpine_show("count > 0") }} {{ alpine_cloak() }}>
+```
+
+### `{% frame %}` tag (Turbo Frames equivalent)
+
+```html
+{% frame "comments" src="/api/comments" lazy=true %}
+    <div class="skeleton"></div>
+{% endframe %}
+```
+
+Parameters: `src`, `lazy`, `swap`, `trigger`, `target`, `push_url`
+
+### SlotRegistry (cross-module UI injection)
+
+```python
+# Module registers a slot contribution
+slots.register("dashboard_widgets", "loyalty/partials/widget.html", module_id="loyalty", priority=5)
+```
+
+```html
+<!-- Template renders all slot contributions -->
+{% for entry, ctx in slot_entries("dashboard_widgets") %}
+    {% include entry.template with context %}
+{% endfor %}
+```
+
+### Flash messages
+
+```python
+add_message(request, "success", "Item created")
+# HTMX: injected as HX-Trigger: {"showMessages": [...]}
+# Non-HTMX: stored in session flash for next page load
+```
+
+### Template auto-injection
+
+Every `TemplateResponse` automatically receives:
+- `csrf_token` — raw token string
+- `csrf_input()` — callable returning a hidden `<input>` element
+- `csp_nonce` — CSP nonce for the current request
+
+No manual context passing needed. Typical base template:
+
+```html
+<body hx-boost="true" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
+```
+
+### Jinja2 filters
+
+| Filter | Example | Output |
+|--------|---------|--------|
+| `currency` | `{{ 9.99 | currency("EUR") }}` | 9,99 EUR |
+| `dateformat` | `{{ dt | dateformat("d/m/Y H:i") }}` | 17/04/2026 14:30 |
+| `timesince` | `{{ dt | timesince }}` | 3 minutes |
+| `truncatewords` | `{{ text | truncatewords(10) }}` | First ten words... |
+| `slugify` | `{{ "Hello World" | slugify }}` | hello-world |
 
 ---
 
-## Motor de módulos — backends de almacenamiento
+## Components Subsystem
 
-`hotframe` es agnóstico al backend de almacenamiento: el `ModuleSource` es una interfaz; las implementaciones incluidas son `S3Source`, `FilesystemSource`, `HTTPSource`. Los ejemplos usan S3 por familiaridad.
+Components are reusable server-rendered UI widgets — named, self-contained directories with an optional Pydantic props class, a required Jinja2 template, an optional `APIRouter`, and an optional `static/` directory. Where slots let modules **push** content into a named extension point, components let templates **pull** a named widget into their markup. Both registries coexist in `app.state`.
+
+See [Components](./COMPONENTS.md) for the full author's guide.
+
+### Two types
+
+- **Template-only** — a single `template.html`. Props arrive as Jinja2 variables; defaults come from `| default(...)`.
+- **Python-declared** — a `component.py` with a subclass of `hotframe.Component` (a Pydantic `BaseModel`). Props are typed fields with validation; an optional synchronous `context()` method returns derived template variables.
+
+### Discovery paths
+
+```
+apps/<app>/components/<name>/
+modules/<id>/components/<name>/
+```
+
+Hotframe itself does **not** ship framework built-in components. The framework stays HTML- and CSS-free so projects own their design system. `hf startproject` scaffolds two starter components under `apps/shared/components/` — `alert` and `badge` — as plain project files that can be kept, modified, or deleted freely.
+
+### File layout per component
+
+| File | Required | Purpose |
+|------|----------|---------|
+| `template.html` | Yes | Jinja2 template rendered by `render_component()` or `{% component %}`. |
+| `component.py` | No | Subclass of `Component` with typed props and optional `context()`. |
+| `routes.py` | No | Module-level `router: APIRouter`. Auto-mounted under `/_components/<name>/`. |
+| `static/` | No | Per-component static assets. Auto-served at `/_components/<name>/static/`. |
+
+Directories starting with `.` or `_` are skipped (reserved for caches and framework internals).
+
+### Render API
+
+```jinja
+{# Inline, no body #}
+{{ render_component('badge', text='New', variant='primary') }}
+
+{# With a body block, available in the template as {{ body }} #}
+{% component 'alert' type='warning' dismissible=true %}
+    <strong>Heads up.</strong> Stock is low.
+{% endcomponent %}
+```
+
+Both the `render_component()` global and the `{% component %}` tag are installed automatically by `create_template_engine`. Reserved HTML attributes (`class`, `type`, `for`) are passed via an `attrs={...}` dict since Jinja2 rejects them as kwargs.
+
+### Router and static mounts
+
+Each component's `routes.py` is mounted at `/_components/<name>/...` and tagged `component:<name>` in the OpenAPI schema. Its `static/` directory is served at `/_components/<name>/static/...`. Component routes flow through the normal middleware stack — CSRF, rate limiting, session, CSP — exactly like a route declared in `apps/<app>/routes.py`.
+
+### Context isolation and the framework slice
+
+Components render with an **isolated** context. Parent template locals do not leak in. Hotframe copies a fixed framework slice:
+
+| Key | What it is |
+|-----|------------|
+| `request` | Current `starlette.requests.Request` |
+| `csrf_token` | Current CSRF token string |
+| `csp_nonce` | Per-request CSP nonce |
+| `user` | Resolved current user (or `None`) |
+| `is_htmx` | `True` when the request carries `HX-Request: true` |
+| `current_path` | Request URL path |
+
+Validated props (and anything returned by `context()`) are merged on top of the slice. Any other state must be passed as an explicit prop.
+
+### Lifecycle
+
+- **Boot** — `discover_app_components` scans every `apps/<app>/components/` and registers entries with `module_id=None`. Routers and static dirs are mounted immediately.
+- **Module install/activate** — `discover_module_components` scans `modules/<id>/components/`. Routers and static dirs are installed into the running app via `mount_component_routers_for_module` and `mount_component_static_for_module`.
+- **Module deactivate/uninstall** — the matching `unmount_component_routers_for_module` and `unmount_component_static_for_module` reverse the mounts, and `ComponentRegistry.unregister_module(module_id)` drops every entry owned by the module.
+
+Name collisions log a warning and the second registration overwrites the first. This is intentional to support dev-time module reload.
+
+### Public types
+
+- `Component` — Pydantic base class for Python-declared components.
+- `ComponentEntry` — dataclass describing a registered component (name, template path, props class, module_id).
+- `ComponentRegistry` — in-memory registry; an instance lives on `app.state.components`.
 
 ---
 
-## Modularidad interna y tests
+## DB Protocols
 
-Cada subpaquete de `hotframe/` es **independiente, testeable aisladamente**:
+hotframe decouples its public API from SQLAlchemy through `Protocol` classes (structural typing). App and module code should depend on these interfaces, not on `AsyncSession` directly.
 
-```
-hotframe/
-  orm/
-    transactions.py
-    listeners.py
-    events.py
-    tests/
-      test_transactions.py         # @atomic + nested savepoints
-      test_listeners.py            # LISTEN/NOTIFY
-      test_events.py               # SA events → Signal puente
-  signals/
-    signal.py
-    dispatcher.py
-    builtins.py
-    tests/
-      test_signal.py               # connect, disconnect, weakref
-      test_dispatcher.py           # orden, errores aislados
-  engine/
-    module_runtime.py
-    pipeline.py
-    import_manager.py
-    coordinator.py
-    tests/
-      test_pipeline.py             # fases + RollbackHandle LIFO
-      test_import_manager.py       # purge atómico + weakref verification
-      test_coordinator.py          # graceful restart local
-      test_e2e_install.py          # instalación completa simulada
-  # ... cada subpaquete igual
+| Protocol | What it abstracts | Default implementation |
+|----------|-------------------|----------------------|
+| `ISession` | Async DB session: execute, add, flush, commit, rollback, delete, transactions | `AsyncSession` (SQLAlchemy) |
+| `IExecuteResult` | Result of `session.execute()`: scalars, scalar_one, first, all | `CursorResult` (SQLAlchemy) |
+| `IScalarResult` | Result of `result.scalars()`: all, first | `ScalarResult` (SQLAlchemy) |
+| `IQueryBuilder[T]` | Chainable async query builder: filter, order_by, limit, all, first, get, count | `HubQuery` |
+| `IRepository[T]` | Typed CRUD: list, get, create, update, delete, count, exists | `BaseRepository` |
+
+Defined in `hotframe/db/protocols.py`, re-exported from `hotframe/__init__.py`.
+
+### Usage in services
+
+```python
+from hotframe import ModuleService, ISession
+
+class OrderService(ModuleService):
+    # self.db: ISession  (not AsyncSession)
+    # self.q(Model) -> IQueryBuilder[Model]
+    # self.repo(Model) -> IRepository[Model]
+
+    async def get_pending(self):
+        return await self.q(Order).filter(Order.status == "pending").all()
 ```
 
-Ejecutar tests por área:
-```
-pytest hotframe/orm              # solo ORM
-pytest hotframe/engine           # solo engine del runtime
-pytest hotframe/ -m "not slow"   # todo lo rápido
-pytest hotframe/ --cov           # cobertura (gate ≥90%)
+### Usage in routes
+
+```python
+from hotframe import DbSession
+
+@router.get("/items")
+async def list_items(db: DbSession):
+    # db is typed as ISession — no SQLAlchemy import in route code
+    result = await db.execute(select(Item))
+    return result.scalars().all()
 ```
 
-Tests E2E cross-app viven en `tests/` del root:
-```
-pytest tests/                   # E2E completos de la aplicación
-```
+### What is NOT abstracted
+
+Models (`DeclarativeBase`, `mapped_column`), migrations (Alembic), ORM events (`orm/events.py`), `PgNotifyBridge` (`orm/listeners.py`), and custom types (`EncryptedString`, `EncryptedText`) remain SQLAlchemy-specific. The protocols abstract the session and query layer, not the schema definition layer.
 
 ---
 
-## Tiempos objetivo
+## CLI Commands
 
-| Operación | Objetivo |
-|-----------|----------|
-| Arranque completo (apps core, sin módulos) | <3s |
-| Hot-mount módulo nuevo (cold, S3 + migrate) | <2s |
-| Hot-mount módulo existente (warm, solo import) | <500ms |
-| Graceful restart local (multiprocessing) | <3s |
-| Graceful restart ECS rolling | 30-60s |
-| Zombie classes tras uninstall (weakref verify) | 0 |
+Two aliases: `hf` (short) and `hotframe` (explicit).
+
+```bash
+# Scaffolding
+hf startproject <name>              # create project scaffold (use . for current directory)
+hf startapp <name>                  # create app scaffold in apps/
+hf startmodule <name>               # create module scaffold in modules/
+hf startmodule <name> --api-only    # API-only module (no views/templates)
+hf startmodule <name> --system      # system/kernel module (no hub isolation)
+
+# Module management
+hf modules list                     # show all modules and their status
+hf modules install <source>         # source: name, .zip path, URL, or marketplace id
+hf modules update <source>          # update with backup + auto-rollback on failure
+hf modules activate <name>          # disabled -> active
+hf modules deactivate <name>        # active -> disabled
+hf modules uninstall <name>         # remove (flags: --keep-data, --yes)
+
+# Development
+hf runserver                        # uvicorn with autoreload
+hf migrate                          # alembic upgrade head (all namespaces)
+hf makemigrations                   # alembic revision --autogenerate
+hf shell                            # interactive REPL with app context loaded
+hf version                          # show hotframe version
+```
+
+`hf startproject .` scaffolds into the current directory instead of a subdirectory. The scaffold also seeds starter components in `apps/shared/components/` (`alert`, `badge`) — see [Components](./COMPONENTS.md).
+
+`hf shell` drops you into an interactive Python REPL with `app`, `settings`, `db`, `events`, `hooks`, `slots`, `runtime`, and `SlotEntry` pre-loaded. It auto-detects IPython (install via `pip install "hotframe[shell]"`) and falls back to the built-in `code.interact()`. Flags: `--plain` (force built-in REPL), `--no-startup` (skip lifespan), `--settings=<dotted.path>` (override discovery). See [Shell](./SHELL.md).
 
 ---
 
-## Métricas y observabilidad
+## Performance Targets
 
-**Prometheus:**
+| Operation | Target |
+|-----------|--------|
+| Full boot (core apps, no modules) | < 3s |
+| Hot-mount new module (cold: S3 + migrate) | < 2s |
+| Hot-mount existing module (warm: disk only) | < 500ms |
+| Module uninstall (zombie classes after weakref check) | 0 |
+
+---
+
+## Observability
+
+**Prometheus metrics:**
 - `hotframe_module_install_duration_seconds{module, phase}`
 - `hotframe_module_mount_errors_total{module, phase}`
-- `hotframe_zombie_classes_total{module}` — alarma si >0 tras 30s → dispara GracefulRestart
-- `hotframe_hot_mount_total{result}` (success | fallback_restart | error)
+- `hotframe_zombie_classes_total{module}` — alert if > 0 after 30s -> triggers graceful restart
+- `hotframe_hot_mount_total{result}` — `success | error`
 
-**OpenTelemetry:** span por fase del pipeline, atributos `module.name`, `module.version`.
-
----
-
-## Garantía de "no se toca"
-
-Tras fase de estabilización (ver `TODO.md`), `hotframe/` entra en **feature freeze**:
-
-1. **Scope congelado.** No se añaden features sin RFC aprobado.
-2. **Solo bugfixes y performance.** Cada PR que toque `hotframe/` requiere:
-   - Tests nuevos que cubran el bug
-   - Benchmark si afecta performance
-   - Code review de 2 personas mínimo
-3. **Contratos públicos inmutables.** Signatures de `hotframe/__init__.py` no cambian sin deprecation de 2 versiones.
-4. **Upgrades de dependencias** (FastAPI, Starlette, SQLAlchemy, Alembic): test suite completa + canary en staging.
-5. **Devs escriben módulos, no tocan `hotframe`.** Si un dev necesita algo que `hotframe` no da → ticket → se discute si entra o se resuelve en el módulo.
-
-**Métrica de éxito:** <5% de commits mensuales tocan `hotframe/`. El resto son módulos y features de producto.
+**OpenTelemetry:** span per pipeline phase with attributes `module.name`, `module.version`.
 
 ---
 
-## Qué NO va en `hotframe/`
+## What Does NOT Belong in `hotframe/`
 
-| No va | Vive en |
-|-------|---------|
-| Modelos de negocio de la aplicación | `apps/<app>/models.py` |
-| `settings.py` Pydantic | `settings.py` (root del proyecto usuario) |
-| `main.py`, `asgi.py` | root del proyecto usuario (3 líneas cada uno) |
-| Templates de layout base | `apps/shared/templates/shared/` |
-| Assets globales | `apps/shared/static/shared/` |
-| Locales de la aplicación | `apps/shared/locales/` |
-| Migraciones (TODAS) | `apps/<app>/migrations/`, `modules/<modulo>/migrations/` |
-| Integraciones de dominio (pagos, fiscal, CRM específicos) | Apps o módulos |
-| Credenciales, secretos, `.env` | Fuera del repo (gestor de secretos) |
-| Admin UI | Fuera del scope — cada aplicación la construye |
+| Does not go here | Lives in |
+|-----------------|----------|
+| Business model classes | `apps/<app>/models.py` |
+| `settings.py` (Pydantic) | project root `settings.py` |
+| `main.py`, `asgi.py` | project root (3 lines each) |
+| Base layout templates | `apps/shared/templates/shared/` |
+| Global static assets | `apps/shared/static/shared/` |
+| All migrations | `apps/<app>/migrations/`, `modules/<module>/migrations/` |
+| Domain integrations (payments, fiscal, CRM) | apps or modules |
+| UI components with HTML/CSS (e.g. `alert`, `badge`) | `apps/<app>/components/`, scaffolded by `hf startproject` |
+| Credentials, secrets | outside the repo (secrets manager) |
 
-**Criterio de admisión:** si desaparece, deja de funcionar el mecanismo genérico (no una aplicación específica).
+**Admission criterion:** if it disappears, the generic mechanism stops working (not just one application).
