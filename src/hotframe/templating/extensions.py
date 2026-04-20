@@ -44,6 +44,7 @@ def register_extensions(env: Environment) -> None:
         {
             "currency": currency_filter,
             "dateformat": dateformat_filter,
+            "timeformat": timeformat_filter,
             "timesince": timesince_filter,
             "truncatewords": truncatewords_filter,
             "slugify": slugify_filter,
@@ -222,6 +223,42 @@ def dateformat_filter(value: object, fmt: str = "d/m/Y H:i") -> str:
         return value.strftime(py_fmt)  # type: ignore[union-attr]
     except (AttributeError, ValueError):
         return str(value)
+
+
+def timeformat_filter(value: object, fmt: str = "H:i") -> str:
+    """Format a datetime/time value to a time-only string using PHP-style tokens.
+
+    Supports the subset of dateformat tokens that make sense for time:
+    H (24h hour, zero-padded), G (24h hour, no pad), h (12h hour, zero-padded),
+    g (12h hour, no pad), i (minute, zero-padded), s (second, zero-padded),
+    a (am/pm lowercase), A (AM/PM uppercase).
+    """
+    if value is None:
+        return ""
+
+    _PHP_TO_STRFTIME = {
+        "H": "%H",
+        "G": "%-H",
+        "h": "%I",
+        "g": "%-I",
+        "i": "%M",
+        "s": "%S",
+        "a": "%p",
+        "A": "%p",
+    }
+
+    py_fmt = ""
+    for ch in fmt:
+        py_fmt += _PHP_TO_STRFTIME.get(ch, ch)
+
+    try:
+        result = value.strftime(py_fmt)  # type: ignore[union-attr]
+    except (AttributeError, ValueError):
+        return str(value)
+
+    if "a" in fmt:
+        result = result.lower()
+    return result
 
 
 def timesince_filter(value: object) -> str:

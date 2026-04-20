@@ -47,6 +47,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if request.headers.get("upgrade", "").lower() == "websocket":
             return await call_next(request)
 
+        # Skip CSRF processing (including Set-Cookie) for static assets so
+        # they remain cacheable by CDNs and browsers without per-user cookies.
+        if request.url.path.startswith("/static/"):
+            return await call_next(request)
+
         token = request.cookies.get(COOKIE_NAME)
         new_token = False
 

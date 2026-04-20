@@ -51,9 +51,11 @@ import asyncio
 import logging
 from collections import defaultdict
 
-from fastapi import APIRouter, Request
-from starlette.responses import HTMLResponse, JSONResponse, Response
+from fastapi import APIRouter, HTTPException, Request
+from starlette.responses import JSONResponse, Response
 from starlette.websockets import WebSocket, WebSocketDisconnect
+
+from hotframe.auth.current_user import CurrentUser
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +152,11 @@ broadcast_router = APIRouter(tags=["broadcast"])
 
 
 @broadcast_router.get("/stream/{topic:path}")
-async def stream_topic(request: Request, topic: str) -> Response:
+async def stream_topic(
+    request: Request,
+    topic: str,
+    user: CurrentUser,
+) -> Response:
     """SSE endpoint that streams messages for a topic to the browser.
 
     Clients connect via HTMX SSE extension::
@@ -159,6 +165,8 @@ async def stream_topic(request: Request, topic: str) -> Response:
 
     Each message is an HTML fragment (typically a TurboStream OOB swap)
     that HTMX processes to update the DOM.
+
+    Authentication: requires an active session. Anonymous callers receive 401.
     """
     from sse_starlette.sse import EventSourceResponse
 
@@ -184,7 +192,11 @@ async def stream_topic(request: Request, topic: str) -> Response:
 
 
 @broadcast_router.get("/stream/_mux")
-async def stream_multiplexed(request: Request, topics: str = "") -> Response:
+async def stream_multiplexed(
+    request: Request,
+    user: CurrentUser,
+    topics: str = "",
+) -> Response:
     """Multiplexed SSE endpoint — one connection for multiple topics.
 
     The client sends ``topics=a,b,c`` as a query parameter. Messages
@@ -193,15 +205,20 @@ async def stream_multiplexed(request: Request, topics: str = "") -> Response:
 
     This reduces the number of open connections from N (one per topic)
     to 1 per browser tab.
+
+    Authentication: requires an active session. Anonymous callers receive 401.
+    Validation: at least one non-empty topic is required; otherwise the
+    endpoint responds 400 **before** opening any queue or streaming body,
+    so clients get an immediate error instead of a hung connection.
     """
     from sse_starlette.sse import EventSourceResponse
 
-    if not topics:
-        return HTMLResponse("No topics specified", status_code=400)
-
-    topic_list = [t.strip() for t in topics.split(",") if t.strip()]
+    topic_list = [t.strip() for t in topics.split(",") if t.strip()] if topics else []
     if not topic_list:
-        return HTMLResponse("No valid topics", status_code=400)
+        raise HTTPException(
+            status_code=400,
+            detail="At least one topic required",
+        )
 
     hub = get_broadcast_hub(request)
     queues: list[tuple[str, asyncio.Queue]] = []
@@ -244,6 +261,7 @@ async def _wait_queue(topic: str, queue: asyncio.Queue) -> tuple[str, str] | Non
         return None
 
 
+@broadcast_router.websocket("/ws/stream/{topic:path}")
 async def ws_broadcast_handler(websocket: WebSocket, topic: str) -> None:
     """WebSocket endpoint that streams broadcast messages for a topic.
 
@@ -257,7 +275,24 @@ async def ws_broadcast_handler(websocket: WebSocket, topic: str) -> None:
             // e.data is an HTML fragment — inject into DOM
             document.getElementById("container").innerHTML += e.data;
         };
+
+    Authentication: since ``BaseHTTPMiddleware`` subclasses (including
+    ``SessionMiddleware``) pass WebSocket scopes through untouched, the
+    session is parsed manually from the upgrade request cookies via
+    ``get_session_data``. Anonymous upgrades are closed with code 4401
+    (policy violation, application-defined) before ``accept()`` is called.
     """
+    from hotframe.auth.auth import SESSION_USER_KEY
+    from hotframe.middleware.session import get_session_data
+
+    session = get_session_data(websocket)
+    if not session.get(SESSION_USER_KEY):
+        # Reject with a close code that maps to "unauthorized" in the
+        # 4000-4999 application range. We close before accept() so the
+        # handshake fails with HTTP 403 on the client side.
+        await websocket.close(code=4401)
+        return
+
     await websocket.accept()
     hub = get_broadcast_hub(websocket)  # WebSocket has .app too
     queue = await hub.subscribe(topic)

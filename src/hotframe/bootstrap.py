@@ -98,6 +98,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     mount_component_routers(app, components)
     mount_component_static(app, components)
 
+    # 8. Boot: mount every DB-active module's router into the live FastAPI
+    # app so ``/m/<module_id>/`` routes exist from the first request after
+    # a restart. Without this pass, ``status='active'`` rows persist in the
+    # DB but their handlers return 404 until the user clicks Activate again
+    # from the marketplace. Failures are logged and swallowed — a broken
+    # module must not prevent the rest of the app from starting.
+    from hotframe.config.database import get_session_factory
+
+    try:
+        session_factory = get_session_factory()
+        async with session_factory() as boot_session:
+            count = await runtime.boot_all_active_modules(boot_session)
+            await boot_session.commit()
+        logger.info("Boot: mounted routers for %d active module(s)", count)
+    except Exception:
+        logger.exception("Boot: failed to mount active modules (continuing startup)")
+
     elapsed = (time.monotonic() - t0) * 1000
     logger.info("Application started in %.0fms", elapsed)
 
@@ -204,10 +221,24 @@ def create_app(settings: HotframeSettings | None = None) -> FastAPI:
     from pathlib import Path as _Path
 
     from fastapi.staticfiles import StaticFiles
+    from starlette.responses import Response as _Response
+
+    class CachedStaticFiles(StaticFiles):
+        """StaticFiles subclass that adds long-lived Cache-Control headers.
+
+        ``public, max-age=31536000, immutable`` tells browsers (and CDNs) to
+        cache fingerprinted assets for one year without revalidation.  Only
+        applied to the ``/static/`` mount — not to media files.
+        """
+
+        async def get_response(self, path: str, scope) -> _Response:
+            response = await super().get_response(path, scope)
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return response
 
     static_root = _Path(settings.STATIC_ROOT).resolve()
     if static_root.exists():
-        app.mount(settings.STATIC_URL, StaticFiles(directory=str(static_root)), name="static")
+        app.mount(settings.STATIC_URL, CachedStaticFiles(directory=str(static_root)), name="static")
 
     # --- Media files (local dev only) ---
     if settings.MEDIA_STORAGE == "local" and settings.DEBUG:

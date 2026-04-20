@@ -186,6 +186,7 @@ class ModuleRuntime:
         self,
         session: ISession,
         hub_id: UUID,
+        skip_db_writes: bool = False,
     ) -> None:
         """
         Startup sequence: read DB → download from S3 → load all active.
@@ -204,6 +205,18 @@ class ModuleRuntime:
             4. Resolve dependency order (topological sort)
             5. Load each module via importlib + route mount
             6. Start dev watcher if DEBUG=True
+
+        Args:
+            session: Async SQLAlchemy session.
+            hub_id: Tenant UUID (or ``None`` for single-tenant).
+            skip_db_writes: When ``True``, the boot loop still mounts every
+                module's routes into the FastAPI app (each worker needs its
+                own in-memory routes) but NEVER issues any ``UPDATE`` or
+                ``DELETE`` against ``hub_module``. Set by
+                :meth:`boot_all_active_modules` on worker processes that
+                lost the per-hub advisory lock, so only one worker writes
+                to the shared row at boot and the rest no longer race into
+                Postgres deadlocks on ``hub_module.manifest``.
         """
         start = time.monotonic()
 
@@ -245,31 +258,34 @@ class ModuleRuntime:
                     cat = cat_result.scalar_one_or_none()
                     if cat:
                         mod.version = cat.version
-                        await session.flush()
+                        if not skip_db_writes:
+                            await session.flush()
                         logger.info("Resolved %s to v%s", mod.module_id, mod.version)
                     else:
                         logger.warning(
                             "Skipping active module %s: version not found in catalog",
                             mod.module_id,
                         )
-                        await self.state.set_error(
-                            session,
-                            mod.module_id,
-                            "Module version not found in catalog",
-                            hub_id=hub_id,
-                        )
+                        if not skip_db_writes:
+                            await self.state.set_error(
+                                session,
+                                mod.module_id,
+                                "Module version not found in catalog",
+                                hub_id=hub_id,
+                            )
                         continue
                 else:
                     logger.warning(
                         "Skipping active module %s: version is empty and no catalog model configured",
                         mod.module_id,
                     )
-                    await self.state.set_error(
-                        session,
-                        mod.module_id,
-                        "Module version not found in catalog",
-                        hub_id=hub_id,
-                    )
+                    if not skip_db_writes:
+                        await self.state.set_error(
+                            session,
+                            mod.module_id,
+                            "Module version not found in catalog",
+                            hub_id=hub_id,
+                        )
                     continue
             boot_candidates.append(mod)
 
@@ -287,12 +303,13 @@ class ModuleRuntime:
                     "Module %s code not available — setting to error",
                     mod.module_id,
                 )
-                await self.state.set_error(
-                    session,
-                    mod.module_id,
-                    "Module code not available after S3 download",
-                    hub_id=hub_id,
-                )
+                if not skip_db_writes:
+                    await self.state.set_error(
+                        session,
+                        mod.module_id,
+                        "Module code not available after S3 download",
+                        hub_id=hub_id,
+                    )
                 continue
             load_items.append(
                 {
@@ -313,6 +330,7 @@ class ModuleRuntime:
                 hub_id,
                 item["module_id"],
                 item["path"],
+                skip_db_writes=skip_db_writes,
             )
             if success:
                 loaded += 1
@@ -332,6 +350,163 @@ class ModuleRuntime:
                 self.settings.MODULES_DIR,
                 lambda mid: self.hot_reload(mid),
             )
+
+    async def boot_all_active_modules(self, session: ISession) -> int:
+        """
+        Mount every DB-active module's router into the running FastAPI app.
+
+        Called once during FastAPI lifespan startup, after :class:`ModuleRuntime`
+        has been constructed. Without this call, modules persisted with
+        ``status='active'`` survive the DB but their HTTP routes at
+        ``/m/<module_id>/`` return 404 until the user manually re-activates
+        from the marketplace UI.
+
+        Auto-detects multi-tenant vs. single-tenant deployments by inspecting
+        the model configured via ``settings.MODULE_STATE_MODEL``:
+
+        - Model has a ``hub_id`` column → iterate distinct hub_ids and call
+          :meth:`boot` for each (hub-aware projects like ERPlora Hub).
+        - Model has no ``hub_id`` column → call :meth:`boot` once with
+          ``hub_id=None`` (framework built-in ``Module`` model).
+
+        Failures on one hub do NOT abort the remaining hubs — each is logged
+        and the next is attempted so a single broken tenant cannot brick
+        startup for every tenant on a shared process.
+
+        Concurrency (multi-worker deploys)
+        ---------------------------------
+        When uvicorn/gunicorn runs with ``--workers N``, every worker is a
+        separate process that runs this method on startup. Each worker must
+        still mount the module routes into its own in-memory FastAPI app,
+        otherwise requests routed to that worker would 404. But only ONE
+        worker should write to the shared ``hub_module`` row — multiple
+        workers issuing concurrent ``UPDATE hub_module SET manifest=…``
+        for the same ``module_id`` deadlock in Postgres and flip random
+        modules to ``status='error'``.
+
+        We serialize the DB-write side with a Postgres session-level
+        advisory lock keyed by the hub UUID. The first worker to acquire
+        the lock for a given hub performs the full boot (routes + DB
+        writes). Losing workers still mount routes into their own process
+        but skip every ``UPDATE``/``set_error`` against ``hub_module``.
+        On non-Postgres backends (SQLite in tests) the lock is a no-op.
+
+        Args:
+            session: Async SQLAlchemy session used for all DB work.
+
+        Returns:
+            The total number of ``(hub_id, module)`` pairs the boot
+            pipeline attempted to load (sum across hubs).
+        """
+        from sqlalchemy import select
+
+        Model = self.state._model()
+        has_hub_column = hasattr(Model, "hub_id")
+
+        if not has_hub_column:
+            # Single-tenant / framework-default: one boot pass, no filter.
+            active = await self.state.get_active_modules(session)
+            if not active:
+                logger.info("No active modules to boot")
+                return 0
+            acquired = await self._try_acquire_boot_lock(session, hub_id=None)
+            if not acquired:
+                logger.info(
+                    "Another worker holds the boot lock — mounting routes "
+                    "locally without DB writes"
+                )
+            await self.boot(session, hub_id=None, skip_db_writes=not acquired)  # type: ignore[arg-type]
+            return len(active)
+
+        # Multi-tenant: one boot pass per distinct hub with active modules.
+        stmt = select(Model.hub_id).where(Model.status == "active").distinct()
+        result = await session.execute(stmt)
+        hub_ids = [row[0] for row in result.all() if row[0] is not None]
+
+        if not hub_ids:
+            logger.info("No hubs with active modules to boot")
+            return 0
+
+        total = 0
+        for hub_id in hub_ids:
+            try:
+                active = await self.state.get_active_modules(session, hub_id=hub_id)
+                acquired = await self._try_acquire_boot_lock(session, hub_id=hub_id)
+                if not acquired:
+                    logger.info(
+                        "Hub %s: another worker holds the boot lock — "
+                        "mounting routes locally without DB writes",
+                        hub_id,
+                    )
+                await self.boot(session, hub_id, skip_db_writes=not acquired)
+                total += len(active)
+            except Exception:
+                logger.exception(
+                    "Boot failed for hub %s — skipping so other hubs still boot",
+                    hub_id,
+                )
+
+        logger.info("Boot pass complete: attempted %d module(s) across %d hub(s)", total, len(hub_ids))
+        return total
+
+    async def _try_acquire_boot_lock(
+        self,
+        session: ISession,
+        hub_id: UUID | None,
+    ) -> bool:
+        """
+        Try to acquire a Postgres transaction-level advisory lock keyed by
+        the hub so only one uvicorn worker performs DB writes during boot.
+
+        Returns ``True`` if the lock was acquired (or the backend is not
+        Postgres — SQLite in tests has no equivalent and does not need
+        one, because tests run single-process). Returns ``False`` when
+        another worker already holds the lock, in which case the caller
+        must skip DB writes to avoid deadlocking on ``hub_module``.
+
+        The lock is ``pg_try_advisory_xact_lock`` so it releases
+        automatically at the end of the enclosing transaction — no
+        explicit unlock call is required.
+        """
+        from sqlalchemy import text
+
+        # Detect backend: on non-Postgres (SQLite in unit tests) skip the
+        # lock entirely. The race this guards against only manifests when
+        # multiple worker processes share a Postgres row.
+        try:
+            bind = session.get_bind()  # type: ignore[attr-defined]
+            dialect_name = bind.dialect.name
+        except Exception:
+            # Older/fake sessions may not expose get_bind — be permissive
+            # and assume no lock support; this matches SQLite behavior.
+            return True
+
+        if dialect_name != "postgresql":
+            return True
+
+        # Stable 64-bit key derived from the hub id (or the sentinel
+        # "__global__" for single-tenant projects). We fold to a signed
+        # 64-bit range to fit Postgres' advisory lock signature.
+        key_source = str(hub_id) if hub_id is not None else "__global__"
+        key = _hub_id_to_advisory_key(key_source)
+
+        try:
+            result = await session.execute(
+                text("SELECT pg_try_advisory_xact_lock(:key)"),
+                {"key": key},
+            )
+            row = result.first()
+            return bool(row[0]) if row is not None else False
+        except Exception:
+            # If the lock call itself fails (connection issue, etc.) fall
+            # back to the old behavior — let this worker attempt the
+            # writes. Worst case we reintroduce the original race, which
+            # the follower would also have hit.
+            logger.exception(
+                "Advisory lock check failed for hub %s — continuing without serialization",
+                hub_id,
+            )
+            return True
 
     # ------------------------------------------------------------------
     # Install
@@ -1566,29 +1741,56 @@ class ModuleRuntime:
         hub_id: UUID,
         module_id: str,
         module_path: Path,
+        skip_db_writes: bool = False,
     ) -> bool:
         """
         Load a single module from its local path.
 
         Validates the manifest and loads via :class:`ModuleLoader`.
         On failure, sets the module to error status in the DB.
+
+        Defensively rolls back the session before any post-failure DB
+        write so a transaction-level error on one module (e.g. a
+        deadlock or constraint violation) cannot poison the shared
+        boot session and cascade "current transaction is aborted"
+        failures onto every subsequent module.
+
+        When ``skip_db_writes`` is ``True``, the in-memory route mount
+        still runs (each uvicorn worker owns its own FastAPI app and
+        needs its local routes) but the ``hub_module.manifest`` and
+        ``hub_module.status`` writes are skipped so multiple workers
+        don't race into a Postgres deadlock on the shared row.
         """
         try:
             manifest = load_manifest(module_path)
             await self.loader.load_module(module_id, module_path, manifest)
 
             # Re-serialize manifest to DB so it stays in sync with the
-            # current key format produced by manifest_to_dict().
-            await self.state.update_manifest(
-                session,
-                module_id,
-                manifest_to_dict(manifest),
-                hub_id=hub_id,
-            )
+            # current key format produced by manifest_to_dict(). Only the
+            # leader worker writes — see boot() docstring.
+            if not skip_db_writes:
+                await self.state.update_manifest(
+                    session,
+                    module_id,
+                    manifest_to_dict(manifest),
+                    hub_id=hub_id,
+                )
 
             return True
         except Exception as e:
             logger.exception("Failed to load module %s from %s", module_id, module_path)
+            if skip_db_writes:
+                # Follower worker: do not touch the DB. The leader worker
+                # is responsible for persisting the error state.
+                return False
+            # Clear any in-flight transaction before writing the error
+            # status — otherwise set_error itself raises "current
+            # transaction is aborted" and leaves the session unusable
+            # for the next module in the boot loop.
+            try:
+                await session.rollback()
+            except Exception as rb_err:
+                logger.debug("Best-effort session rollback failed: %s", rb_err)
             try:
                 await self.state.set_error(session, module_id, str(e), hub_id=hub_id)
             except Exception as db_err:
@@ -1697,3 +1899,23 @@ def _get_module_version_model() -> type | None:
     module_path, class_name = model_path.rsplit(".", 1)
     mod = importlib.import_module(module_path)
     return getattr(mod, class_name)
+
+
+def _hub_id_to_advisory_key(value: str) -> int:
+    """
+    Derive a stable signed 64-bit integer from a hub-id string.
+
+    Postgres' ``pg_try_advisory_xact_lock(bigint)`` requires a signed
+    64-bit key. We use the first 8 bytes of BLAKE2b over the input, then
+    reinterpret as a signed little-endian int. The hash is deterministic
+    across Python versions and worker processes, which is what the lock
+    needs to identify the same hub from every worker.
+
+    Python's built-in ``hash()`` is salted per-process since 3.3 and
+    would give each worker a different key — we can't use it here.
+    """
+    import hashlib
+
+    digest = hashlib.blake2b(value.encode("utf-8"), digest_size=8).digest()
+    # signed=True so the result fits Postgres' bigint range.
+    return int.from_bytes(digest, byteorder="little", signed=True)
