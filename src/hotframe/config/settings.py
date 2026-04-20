@@ -177,6 +177,12 @@ class HotframeSettings(BaseSettings):
     # --- Observability ---
     OTEL_SERVICE_NAME: str = "hotframe"
 
+    # --- HTTP clients ---
+    # When True, AuthenticatedClient instances emit lifecycle events
+    # (http.request.started/completed/failed) through the app's EventBus.
+    # Off by default: zero cost when not explicitly enabled.
+    HTTP_CLIENT_EVENTS: bool = False
+
     # --- Module state model ---
     # Dotted path to the SQLAlchemy model used for module state tracking.
     # Must have: module_id, status, version, manifest, config, error_message,

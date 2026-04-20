@@ -341,6 +341,20 @@ class ModuleLoader:
             except Exception:
                 pass
 
+            # Drop any HTTP clients the module registered before the
+            # failure — symmetric to the unload_module path, so a
+            # half-loaded module never leaves a named client behind
+            # pointing at a dead import.
+            http_clients = getattr(self.app.state, "http_clients", None)
+            if http_clients is not None:
+                try:
+                    await http_clients.unregister_module(module_id)
+                except Exception:
+                    logger.exception(
+                        "Failed to unregister HTTP clients for module %s during rollback",
+                        module_id,
+                    )
+
             # Unregister locales
             if locales_registered:
                 try:
@@ -419,6 +433,20 @@ class ModuleLoader:
             unmount_component_routers_for_module(self.app, module_id)
             unmount_component_static_for_module(self.app, module_id)
             self.components.unregister_module(module_id)
+
+        # 4c. HTTP clients — drop every client the module registered as
+        # a safety net in case the module forgot to unregister them in
+        # its deactivate hook. Mirrors the slot and component teardown
+        # above: named resources owned by a module die with the module.
+        http_clients = getattr(self.app.state, "http_clients", None)
+        if http_clients is not None:
+            try:
+                await http_clients.unregister_module(module_id)
+            except Exception:
+                logger.exception(
+                    "Failed to unregister HTTP clients for module %s during unload",
+                    module_id,
+                )
 
         # 5. Unregister module locales
         unregister_module_locales(module_id)
