@@ -62,6 +62,10 @@ The CLI installs two aliases: `hf` (short) and `hotframe` (explicit).
 
 - **CLI scaffolding** — `hf startproject`, `hf startapp`, `hf startmodule`, `hf makemigrations`, `hf migrate`. Generate production-ready skeletons from the command line.
 
+- **Interactive shell** — `hf shell` opens a Python REPL with the app fully booted: `app`, `settings`, `db`, `events`, `hooks`, `slots`, and `runtime` are pre-loaded. Use it for ad-hoc queries, slot debugging, or inspecting module state. Install `pip install "hotframe[shell]"` for the optional IPython backend with auto-await.
+
+- **Reusable components** — Server-rendered UI widgets with a required `template.html` and optional Pydantic-typed props, colocated HTTP routes, and per-component static assets. Apps and hot-mount modules contribute components; `hf startproject` scaffolds `alert` and `badge` as editable examples. Invoke from any template via `{{ render_component('name', ...) }}` or `{% component 'name' %}...{% endcomponent %}`.
+
 ---
 
 ## Comparison
@@ -86,7 +90,7 @@ Define a module with a model, a route, and a template in under 20 lines:
 
 ```python
 # modules/blog/module.py
-from hotframe.modules import ModuleConfig
+from hotframe import ModuleConfig
 
 class BlogModule(ModuleConfig):
     name = "blog"
@@ -96,7 +100,7 @@ class BlogModule(ModuleConfig):
 
 ```python
 # modules/blog/models.py
-from hotframe.db import Base
+from hotframe import Base
 from sqlalchemy.orm import Mapped, mapped_column
 
 class Post(Base):
@@ -107,16 +111,18 @@ class Post(Base):
 ```
 
 ```python
-# modules/blog/views.py
-from hotframe.htmx import htmx_view
-from hotframe.routing import router
+# modules/blog/routes.py
+from fastapi import APIRouter, Request
+from hotframe import htmx_view, DbSession
 from .models import Post
 
+router = APIRouter()
+
 @router.get("/blog")
-@htmx_view(template="blog/index.html")
-async def post_list(request):
-    posts = await Post.all()
-    return {"posts": posts}
+@htmx_view(module_id="blog", view_id="list")
+async def post_list(request: Request, db: DbSession):
+    posts = await db.execute(select(Post))
+    return {"posts": posts.scalars().all()}
 ```
 
 ```html
@@ -126,13 +132,6 @@ async def post_list(request):
     <article>{{ post.title }}</article>
   {% endfor %}
 </div>
-```
-
-Mount it:
-
-```python
-# settings.py
-INSTALLED_MODULES = ["core", "auth", "blog"]
 ```
 
 ---
@@ -147,7 +146,7 @@ hotframe is organized in three layers:
 
 **HTMX layer** — sits on top of FastAPI responses. The `@htmx_view` decorator detects `HX-Request` headers and returns partial renders or full-page responses automatically. TurboStream helpers produce `text/vnd.turbo-stream.html` responses for out-of-band DOM updates. The `EventBus` integrates with server-sent events for real-time broadcasting to named HTMX frames.
 
-The CLI (`hf`) is a Typer application that wraps Uvicorn, Alembic, and the scaffolding generators. It reads `settings.py` from the project root and discovers modules from `INSTALLED_MODULES`.
+The CLI (`hf`) is a Typer application that wraps Uvicorn, Alembic, and the scaffolding generators. It reads `settings.py` from the project root and discovers modules automatically from the `modules/` directory.
 
 ---
 
@@ -156,6 +155,8 @@ The CLI (`hf`) is a Typer application that wraps Uvicorn, Alembic, and the scaff
 Documentation is available in the [docs/](docs/) directory.
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Components](docs/COMPONENTS.md)
+- [Shell](docs/SHELL.md)
 - [Changelog](docs/CHANGELOG.md)
 - [Security policy](docs/SECURITY.md)
 

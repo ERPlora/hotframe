@@ -55,7 +55,15 @@ def build_csp_header(nonce: str, enforce: bool) -> tuple[str, str]:
 
     if settings.CSP_TRUSTED_TYPES:
         directives.append("require-trusted-types-for 'script'")
-        directives.append("trusted-types default")
+        # Permit the policies hotframe and the bundled JS libraries need to
+        # create. ``default`` covers the permissive base policy installed
+        # by the project base template; ``iconify`` is the named policy
+        # the Iconify CDN script registers; ``htmx-*`` is the family
+        # HTMX uses for HTML/script-URL serialization. Extend the
+        # whitelist via a settings hook if a downstream library needs
+        # additional names.
+        trusted_policies = "default iconify htmx-htmx0 htmx-htmx1 htmx-htmx2"
+        directives.append(f"trusted-types {trusted_policies} 'allow-duplicates'")
 
     header_name = "Content-Security-Policy" if enforce else "Content-Security-Policy-Report-Only"
     header_value = "; ".join(directives)

@@ -164,9 +164,12 @@ class ModuleMigrationRunner:
         config.set_main_option("sqlalchemy.url", db_url)
         config.set_main_option("version_table", version_table)
 
-        # Make the module path available to env.py
+        # Make the module path and version_table available to env.py
+        # so legacy env.py implementations that read config.attributes can
+        # also resolve the per-module Alembic version table.
         config.attributes["module_id"] = module_id
         config.attributes["module_path"] = str(module_path)
+        config.attributes["version_table"] = version_table
 
         return config
 

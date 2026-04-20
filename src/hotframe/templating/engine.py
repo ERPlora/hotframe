@@ -40,7 +40,8 @@ def _collect_template_dirs(modules_dir: Path | None) -> list[str]:
     """Build the ordered list of template directories.
 
     Order: global templates first (CWD/templates/), then app template
-    dirs (apps/*/templates/), then module template dirs.
+    dirs (apps/*/templates/), then module template dirs, then component
+    roots (framework built-ins and per-module components).
     """
     dirs: list[str] = []
 
@@ -68,6 +69,27 @@ def _collect_template_dirs(modules_dir: Path | None) -> list[str]:
             if tpl_dir.exists():
                 dirs.append(str(tpl_dir))
 
+    # 3. Component search roots.
+    #    Framework built-ins live at ``hotframe/components/_builtin/``
+    #    and are addressed as ``_builtin/<name>/template.html``; adding
+    #    the ``components/`` directory itself makes that reference resolve.
+    #    App-shipped components are addressed as
+    #    ``<app_name>/components/<name>/template.html``; adding the
+    #    ``apps/`` directory makes that reference resolve.
+    #    Module-shipped components are addressed as
+    #    ``<module_id>/components/<name>/template.html``; adding
+    #    ``modules_dir`` makes that reference resolve.
+    from hotframe import components as _components_pkg
+
+    framework_components_root = Path(_components_pkg.__file__).parent
+    dirs.append(str(framework_components_root))
+
+    if apps_dir.exists():
+        dirs.append(str(apps_dir))
+
+    if modules_dir and modules_dir.exists():
+        dirs.append(str(modules_dir))
+
     return dirs
 
 
@@ -84,6 +106,10 @@ def create_template_engine(modules_dir: Path | None = None) -> Jinja2Templates:
     """
     template_dirs = _collect_template_dirs(modules_dir)
 
+    from hotframe.components.jinja_ext import (
+        ComponentExtension,
+        install_component_context_tracker,
+    )
     from hotframe.templating.frame_extension import FrameExtension
 
     env = Environment(
@@ -94,13 +120,20 @@ def create_template_engine(modules_dir: Path | None = None) -> Jinja2Templates:
             "jinja2.ext.do",
             "jinja2.ext.loopcontrols",
             FrameExtension,
+            ComponentExtension,
         ],
     )
 
+    # Patch env.context_class so the currently-rendering Context is
+    # exposed to the ``{% component %}`` tag's CallBlock helper.
+    install_component_context_tracker(env)
+
     # Register global functions, filters, and constants.
+    from hotframe.components.rendering import register_component_globals
     from hotframe.templating.extensions import register_extensions
 
     register_extensions(env)
+    register_component_globals(env)
 
     # Install gettext translations so {% trans %} and _() work in templates.
     # The translations adapter uses the context-local language (set per-request

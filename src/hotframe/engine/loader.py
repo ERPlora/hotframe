@@ -32,6 +32,7 @@ from hotframe.middleware.i18n_support import register_module_locales, unregister
 from hotframe.middleware.stack_manager import MiddlewareStackManager
 
 if TYPE_CHECKING:
+    from hotframe.components.registry import ComponentRegistry
     from hotframe.signals.dispatcher import AsyncEventBus
     from hotframe.signals.hooks import HookRegistry
     from hotframe.templating.slots import SlotRegistry
@@ -54,6 +55,7 @@ class ModuleLoader:
         event_bus: AsyncEventBus,
         hooks: HookRegistry,
         slots: SlotRegistry,
+        components: ComponentRegistry | None = None,
         import_manager: ImportManager | None = None,
         stack_manager: MiddlewareStackManager | None = None,
     ) -> None:
@@ -62,6 +64,11 @@ class ModuleLoader:
         self.bus = event_bus
         self.hooks = hooks
         self.slots = slots
+        # Components registry is optional so legacy callers (and the CLI
+        # standalone ModuleRuntime instances in management/cli.py) keep
+        # working. When provided, the loader calls unregister_module on
+        # unload and rollback so components live and die with their module.
+        self.components = components
         # ImportManager tracks sys.modules per package so purge is exact
         # instead of prefix-scanning. Keeping the default factory optional
         # lets tests inject a fresh manager per test.
@@ -70,6 +77,13 @@ class ModuleLoader:
         # atomically when modules add/remove middleware classes. Created
         # per-app so tests can inject stubs.
         self.stack_manager = stack_manager or MiddlewareStackManager(app)
+        # Per-module SQLAlchemy metadata footprint — the mapped classes and
+        # the ``Table`` objects that the module added to the shared
+        # ``Base.metadata``. ``unload_module`` and the ``load_module``
+        # rollback branch both call ``_drop_module_metadata`` so reinstall
+        # never raises ``Table 'X' is already defined for this MetaData
+        # instance``.
+        self._module_metadata: dict[str, tuple[list[type], list]] = {}
 
     # ------------------------------------------------------------------
     # Load
@@ -130,6 +144,9 @@ class ModuleLoader:
         locales_registered = False
         static_mounted = False
         middleware_added = False
+        components_registered = False
+        components_router_mounted = False
+        components_static_mounted = False
 
         try:
             # 3. HTMX routes
@@ -202,6 +219,32 @@ class ModuleLoader:
                 )
                 static_mounted = True
 
+            # 13b. Discover + mount component routers and scoped static.
+            # Components are owned by the module; routers are mounted at
+            # /_components/<name>/ and static at /_components/<name>/static.
+            if self.components is not None:
+                from hotframe.components.discovery import discover_module_components
+                from hotframe.components.mounting import (
+                    mount_component_routers_for_module,
+                    mount_component_static_for_module,
+                )
+
+                discovered = discover_module_components(
+                    self.components,
+                    module_path,
+                    module_id,
+                )
+                if discovered:
+                    components_registered = True
+                    if mount_component_routers_for_module(
+                        self.app, self.components, module_id
+                    ):
+                        components_router_mounted = True
+                    if mount_component_static_for_module(
+                        self.app, self.components, module_id
+                    ):
+                        components_static_mounted = True
+
             # 14. Bust OpenAPI cache
             self.app.openapi_schema = None
 
@@ -260,6 +303,36 @@ class ModuleLoader:
                 except Exception:
                     pass
 
+            # Remove components registered by the module (symmetric to
+            # the slot cleanup above). Safe to call even if the module
+            # never registered any components. Mounts MUST come off
+            # before ``unregister_module`` wipes the module->name map
+            # the mounting helpers use to resolve paths.
+            if self.components is not None:
+                if components_router_mounted:
+                    from hotframe.components.mounting import (
+                        unmount_component_routers_for_module,
+                    )
+
+                    try:
+                        unmount_component_routers_for_module(self.app, module_id)
+                    except Exception:
+                        pass
+                if components_static_mounted:
+                    from hotframe.components.mounting import (
+                        unmount_component_static_for_module,
+                    )
+
+                    try:
+                        unmount_component_static_for_module(self.app, module_id)
+                    except Exception:
+                        pass
+                if components_registered:
+                    try:
+                        self.components.unregister_module(module_id)
+                    except Exception:
+                        pass
+
             # Unregister services
             from hotframe.apps.service_facade import unregister_module_services
 
@@ -290,6 +363,11 @@ class ModuleLoader:
                     for route in self.app.routes
                     if getattr(route, "path", None) != static_mount_path
                 ]
+
+            # Drop SQLAlchemy metadata BEFORE purging sys.modules so the
+            # next install of the same module does not fail with
+            # ``Table 'X' is already defined for this MetaData instance``.
+            self._drop_module_metadata(module_id)
 
             # Purge sys.modules via ImportManager (exact, weakref-checked)
             self._purge_module(module_id)
@@ -328,6 +406,20 @@ class ModuleLoader:
         # 4. Slots
         self.slots.unregister_module(module_id)
 
+        # 4b. Components (mirror of slots; skipped if no registry was
+        # injected, e.g. legacy CLI code paths). Unmount routers and
+        # static BEFORE the registry entries are dropped so the helpers
+        # can still resolve module->component-name mappings.
+        if self.components is not None:
+            from hotframe.components.mounting import (
+                unmount_component_routers_for_module,
+                unmount_component_static_for_module,
+            )
+
+            unmount_component_routers_for_module(self.app, module_id)
+            unmount_component_static_for_module(self.app, module_id)
+            self.components.unregister_module(module_id)
+
         # 5. Unregister module locales
         unregister_module_locales(module_id)
 
@@ -342,7 +434,12 @@ class ModuleLoader:
 
         unregister_module_services(module_id)
 
-        # 8. Purge sys.modules via ImportManager (exact + weakref check
+        # 8. Drop the module's SQLAlchemy metadata footprint BEFORE we
+        # purge sys.modules — once the module classes lose their last
+        # reference SQLAlchemy can no longer dispose them cleanly.
+        self._drop_module_metadata(module_id)
+
+        # 9. Purge sys.modules via ImportManager (exact + weakref check
         # flags zombie classes that were kept alive by caches elsewhere).
         report = self._purge_module(module_id)
         if report is not None and report.zombie_classes:
@@ -517,17 +614,92 @@ class ModuleLoader:
         ]
 
     def _register_exported_models(self, module_id: str) -> None:
-        """Register SQLAlchemy model classes from the module for zombie detection."""
+        """Register SQLAlchemy model classes from the module for zombie detection.
+
+        Also records the ``Table`` objects that the module contributed to
+        ``Base.metadata`` so ``_drop_module_metadata`` can roll back the
+        registration on unload (otherwise reinstall raises
+        ``Table 'X' is already defined for this MetaData instance``).
+        """
         fqn = f"{module_id}.models"
         mod = sys.modules.get(fqn)
         if mod is None:
             return
         from hotframe.models.base import Base
 
+        classes: list[type] = []
+        tables: list = []
         for attr_name in dir(mod):
             obj = getattr(mod, attr_name, None)
             if isinstance(obj, type) and issubclass(obj, Base) and obj is not Base:
                 self.import_manager.register_exported_class(module_id, obj)
+                classes.append(obj)
+                tbl = getattr(obj, "__table__", None)
+                if tbl is not None:
+                    tables.append(tbl)
+
+        # Merge with anything we already tracked (multiple imports of the
+        # same module are tolerated — set semantics on classes, dedup on
+        # the Table objects which are identity-comparable).
+        prev_classes, prev_tables = self._module_metadata.get(module_id, ([], []))
+        merged_classes = list({id(c): c for c in (prev_classes + classes)}.values())
+        merged_tables = list({id(t): t for t in (prev_tables + tables)}.values())
+        self._module_metadata[module_id] = (merged_classes, merged_tables)
+
+    def _drop_module_metadata(self, module_id: str) -> None:
+        """Remove the module's tables from ``Base.metadata`` and dispose mappers.
+
+        Called from :meth:`unload_module` and the failure-rollback branch
+        of :meth:`load_module` so the next install of the same module
+        does not collide with leftover ``Base.metadata`` registrations.
+
+        ``MetaData.remove(table)`` is the documented inverse of table
+        registration; ``registry._dispose_cls`` is SQLAlchemy 2.0's
+        official tear-down for a mapped class. Both are best-effort —
+        any exception is logged at debug level and swallowed because the
+        unload path must remain robust.
+        """
+        from hotframe.models.base import Base
+
+        classes, tables = self._module_metadata.pop(module_id, ([], []))
+
+        # Drop tables from MetaData first so any subsequent mapper dispose
+        # cannot re-trigger their indexes/constraints.
+        for tbl in tables:
+            try:
+                Base.metadata.remove(tbl)
+            except KeyError:
+                # Already removed — safe to ignore.
+                pass
+            except Exception:
+                logger.debug(
+                    "Best-effort: could not remove table %r from Base.metadata",
+                    getattr(tbl, "name", tbl),
+                    exc_info=True,
+                )
+
+        # Dispose mapper + drop the class from the registry.
+        for cls in classes:
+            try:
+                mapper = cls.__mapper__
+            except Exception:
+                continue
+            try:
+                mapper._dispose()
+            except Exception:
+                logger.debug(
+                    "Best-effort: mapper dispose failed for %s",
+                    cls.__name__,
+                    exc_info=True,
+                )
+            try:
+                Base.registry._dispose_cls(cls)
+            except Exception:
+                logger.debug(
+                    "Best-effort: registry dispose failed for %s",
+                    cls.__name__,
+                    exc_info=True,
+                )
 
     def _purge_module(self, module_id: str) -> PurgeReport | None:
         """Purge the module via ``ImportManager`` and report zombies.

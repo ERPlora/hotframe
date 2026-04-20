@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """hotframe — Modular Python web framework with hot-mount dynamic modules."""
 
-__version__ = "0.0.1"
+__version__ = "0.0.6"
 
 # ---------------------------------------------------------------------------
 # Lazy imports — only loaded when accessed
@@ -55,6 +55,10 @@ _LAZY_IMPORTS: dict[str, str] = {
     "BroadcastHub": "hotframe.views.broadcast",
     # Templating
     "SlotRegistry": "hotframe.templating.slots",
+    # Components
+    "Component": "hotframe.components.base",
+    "ComponentRegistry": "hotframe.components.registry",
+    "ComponentEntry": "hotframe.components.entry",
     # Auth
     "get_session_user_id": "hotframe.auth.auth",
     "hash_password": "hotframe.auth.auth",

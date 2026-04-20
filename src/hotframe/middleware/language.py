@@ -80,6 +80,12 @@ class LanguageMiddleware(BaseHTTPMiddleware):
         from hotframe.config.settings import get_settings
 
         settings = get_settings()
+
+        # Skip language detection and cookie for static assets — they are
+        # user-agnostic and must not carry Set-Cookie (breaks CDN caching).
+        if request.url.path.startswith("/static/"):
+            return await call_next(request)
+
         language: str | None = None
 
         # 1. Session

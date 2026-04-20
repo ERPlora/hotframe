@@ -37,6 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Database engine initialized: %s", engine.url.render_as_string(hide_password=True))
 
     # 2. Create core registries
+    from hotframe.components.registry import ComponentRegistry
     from hotframe.signals.dispatcher import AsyncEventBus
     from hotframe.signals.hooks import HookRegistry
     from hotframe.templating.slots import SlotRegistry
@@ -44,6 +45,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     event_bus = AsyncEventBus()
     hooks = HookRegistry()
     slots = SlotRegistry()
+    components = ComponentRegistry()
 
     # 2b. Create broadcast hub (SSE/WS real-time fan-out)
     from hotframe.views.broadcast import BroadcastHub
@@ -61,6 +63,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.event_bus = event_bus
     app.state.hooks = hooks
     app.state.slots = slots
+    app.state.components = components
 
     # 5. Initialize Jinja2 template engine
     from hotframe.config.settings import get_settings
@@ -69,12 +72,48 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     app.state.templates = create_template_engine(modules_dir=settings.MODULES_DIR)
 
+    # Expose the component registry to the Jinja2 environment so the
+    # ``render_component`` global and ``{% component %}`` tag can resolve
+    # entries without having to reach into ``app.state`` at render time.
+    app.state.templates.env.globals["_hotframe_components"] = components
+
     # 6. Initialize ModuleRuntime
     from hotframe.engine.module_runtime import ModuleRuntime
 
-    runtime = ModuleRuntime(app, settings, event_bus, hooks, slots)
+    runtime = ModuleRuntime(app, settings, event_bus, hooks, slots, components=components)
     app.state.module_runtime = runtime
     app.state.module_registry = runtime.registry
+
+    # 7. Components — discover every project app, then mount routers + static.
+    # Module components are discovered/mounted by the loader on module load.
+    from pathlib import Path as _Path
+
+    from hotframe.components.discovery import discover_apps_components
+    from hotframe.components.mounting import (
+        mount_component_routers,
+        mount_component_static,
+    )
+
+    discover_apps_components(components, _Path.cwd() / "apps")
+    mount_component_routers(app, components)
+    mount_component_static(app, components)
+
+    # 8. Boot: mount every DB-active module's router into the live FastAPI
+    # app so ``/m/<module_id>/`` routes exist from the first request after
+    # a restart. Without this pass, ``status='active'`` rows persist in the
+    # DB but their handlers return 404 until the user clicks Activate again
+    # from the marketplace. Failures are logged and swallowed — a broken
+    # module must not prevent the rest of the app from starting.
+    from hotframe.config.database import get_session_factory
+
+    try:
+        session_factory = get_session_factory()
+        async with session_factory() as boot_session:
+            count = await runtime.boot_all_active_modules(boot_session)
+            await boot_session.commit()
+        logger.info("Boot: mounted routers for %d active module(s)", count)
+    except Exception:
+        logger.exception("Boot: failed to mount active modules (continuing startup)")
 
     elapsed = (time.monotonic() - t0) * 1000
     logger.info("Application started in %.0fms", elapsed)
@@ -182,10 +221,24 @@ def create_app(settings: HotframeSettings | None = None) -> FastAPI:
     from pathlib import Path as _Path
 
     from fastapi.staticfiles import StaticFiles
+    from starlette.responses import Response as _Response
+
+    class CachedStaticFiles(StaticFiles):
+        """StaticFiles subclass that adds long-lived Cache-Control headers.
+
+        ``public, max-age=31536000, immutable`` tells browsers (and CDNs) to
+        cache fingerprinted assets for one year without revalidation.  Only
+        applied to the ``/static/`` mount — not to media files.
+        """
+
+        async def get_response(self, path: str, scope) -> _Response:
+            response = await super().get_response(path, scope)
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return response
 
     static_root = _Path(settings.STATIC_ROOT).resolve()
     if static_root.exists():
-        app.mount(settings.STATIC_URL, StaticFiles(directory=str(static_root)), name="static")
+        app.mount(settings.STATIC_URL, CachedStaticFiles(directory=str(static_root)), name="static")
 
     # --- Media files (local dev only) ---
     if settings.MEDIA_STORAGE == "local" and settings.DEBUG:
@@ -243,13 +296,18 @@ def _auto_discover_apps(app: FastAPI) -> None:
     Scans ``apps/*/`` for ``routes.py`` (HTMX views) and ``api.py``
     (REST API) and mounts any ``router`` / ``api_router`` found.
 
-    Also calls ``AppConfig.ready()`` if ``app.py`` defines one.
+    Also calls ``AppConfig.ready()`` if ``app.py`` defines one. Because
+    this function runs synchronously during ``create_app`` (before the
+    lifespan has started), an async ``ready`` is scheduled on a fresh
+    event loop instead of being awaited inline.
 
     If ``settings.INSTALLED_APPS`` is set, only those apps are loaded
     (in that order). Otherwise, all apps in ``apps/`` are loaded
     alphabetically.
     """
+    import asyncio
     import importlib
+    import inspect
     from pathlib import Path
 
     from hotframe.config.settings import get_settings
@@ -298,7 +356,11 @@ def _auto_discover_apps(app: FastAPI) -> None:
         except Exception:
             logger.exception("Failed to load API for app '%s'", name)
 
-        # Call AppConfig.ready() if defined
+        # Call AppConfig.ready() if defined. AppConfig subclasses may
+        # declare ``ready`` as either a plain or ``async def`` method; we
+        # must run both correctly. ``_auto_discover_apps`` itself runs
+        # synchronously from ``create_app`` (outside the lifespan), so an
+        # async ``ready`` is executed on a transient event loop here.
         try:
             mod = importlib.import_module(f"apps.{name}.app")
             for attr_name in dir(mod):
@@ -310,8 +372,12 @@ def _auto_discover_apps(app: FastAPI) -> None:
                     and getattr(attr, "name", None) == name
                 ):
                     config = attr()
-                    if callable(config.ready):
-                        config.ready()
+                    ready_callable = config.ready
+                    if callable(ready_callable):
+                        if inspect.iscoroutinefunction(ready_callable):
+                            asyncio.run(ready_callable())
+                        else:
+                            ready_callable()
                     break
         except ImportError:
             pass
