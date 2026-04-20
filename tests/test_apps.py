@@ -25,6 +25,34 @@ class TestModuleRegistry:
         registry = ModuleRegistry()
         assert registry is not None
 
+    def test_get_loaded_module_ids_empty(self):
+        """Fresh registry has no loaded modules."""
+        registry = ModuleRegistry()
+        assert registry.get_loaded_module_ids() == []
+
+    def test_get_loaded_module_ids_after_register(self):
+        """get_loaded_module_ids reflects every registered module_id."""
+        from pathlib import Path
+
+        registry = ModuleRegistry()
+        manifest = ModuleManifest(
+            MODULE_ID="demo", MODULE_NAME="Demo", MODULE_VERSION="1.0.0",
+        )
+        registry.register(
+            module_id="demo",
+            manifest=manifest,
+            router=None,
+            api_router=None,
+            middleware=None,
+            path=Path("/tmp/demo"),
+        )
+
+        assert registry.get_loaded_module_ids() == ["demo"]
+        assert isinstance(registry.get_loaded_module_ids(), list)
+
+        registry.unregister("demo")
+        assert registry.get_loaded_module_ids() == []
+
 
 class TestServiceFacade:
     def test_action_decorator(self):

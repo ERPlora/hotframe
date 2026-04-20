@@ -212,7 +212,7 @@ class ModuleRuntime:
             self.s3.load_cached_etags()
 
         # 2. Query active modules
-        active_modules = await self.state.get_active_modules(session, hub_id)
+        active_modules = await self.state.get_active_modules(session, hub_id=hub_id)
 
         # Filter out kernel modules (already loaded before boot)
         active_modules = [m for m in active_modules if not self.registry.is_loaded(m.module_id)]
@@ -254,9 +254,9 @@ class ModuleRuntime:
                         )
                         await self.state.set_error(
                             session,
-                            hub_id,
                             mod.module_id,
                             "Module version not found in catalog",
+                            hub_id=hub_id,
                         )
                         continue
                 else:
@@ -266,9 +266,9 @@ class ModuleRuntime:
                     )
                     await self.state.set_error(
                         session,
-                        hub_id,
                         mod.module_id,
                         "Module version not found in catalog",
+                        hub_id=hub_id,
                     )
                     continue
             boot_candidates.append(mod)
@@ -289,9 +289,9 @@ class ModuleRuntime:
                 )
                 await self.state.set_error(
                     session,
-                    hub_id,
                     mod.module_id,
                     "Module code not available after S3 download",
+                    hub_id=hub_id,
                 )
                 continue
             load_items.append(
@@ -379,7 +379,7 @@ class ModuleRuntime:
 
         # Pre-check (outside the pipeline — no side effects yet).
         if hub_id is not None:
-            existing = await self.state.get_module(session, hub_id, module_id)
+            existing = await self.state.get_module(session, module_id, hub_id=hub_id)
             if existing is not None:
                 result.error = f"Module {module_id} is already installed (status={existing.status})"
                 return result
@@ -508,9 +508,9 @@ class ModuleRuntime:
                 try:
                     await self.state.set_error(
                         session,
-                        hub_id,
                         ctx["module_id"],
                         str(e),
+                        hub_id=hub_id,
                     )
                 except Exception as db_err:
                     logger.error(
@@ -722,8 +722,8 @@ class ModuleRuntime:
             if hub_id is not None:
                 existing_canonical = await self.state.get_module(
                     session,
-                    hub_id,
                     canonical_id,
+                    hub_id=hub_id,
                 )
                 if existing_canonical is not None:
                     raise RuntimeError(
@@ -786,7 +786,7 @@ class ModuleRuntime:
         """Verify dependencies (catalog + version + active) before mutating state."""
 
         if hub_id is not None:
-            dep_check = await self.deps.check_install_deps(session, hub_id, manifest)
+            dep_check = await self.deps.check_install_deps(session, manifest, hub_id=hub_id)
             if not dep_check.ok:
                 if dep_check.missing:
                     raise RuntimeError(
@@ -829,11 +829,11 @@ class ModuleRuntime:
         if hub_id is not None:
             await self.state.create(
                 session,
-                hub_id,
                 module_id,
                 version,
                 checksum=checksum,
                 status="installing",
+                hub_id=hub_id,
                 installed_by=installed_by,
             )
 
@@ -948,9 +948,9 @@ class ModuleRuntime:
             await self.lifecycle.call(module_id, "on_activate", session, hub_id)
             await self.state.activate(
                 session,
-                hub_id,
                 module_id,
                 manifest_to_dict(manifest),
+                hub_id=hub_id,
             )
 
         class _ActivateRollback:
@@ -981,7 +981,7 @@ class ModuleRuntime:
 
         try:
             # Check current state
-            mod = await self.state.get_module(session, hub_id, module_id)
+            mod = await self.state.get_module(session, module_id, hub_id=hub_id)
             if mod is None:
                 result.error = f"Module {module_id} is not installed"
                 return result
@@ -1025,7 +1025,7 @@ class ModuleRuntime:
             manifest = load_manifest(module_path)
 
             # Check dependencies
-            dep_check = await self.deps.check_install_deps(session, hub_id, manifest)
+            dep_check = await self.deps.check_install_deps(session, manifest, hub_id=hub_id)
             if not dep_check.ok:
                 inactive = dep_check.inactive
                 missing = dep_check.missing
@@ -1042,7 +1042,7 @@ class ModuleRuntime:
             await self.lifecycle.call(module_id, "on_activate", session, hub_id)
 
             # Update DB
-            await self.state.activate(session, hub_id, module_id, manifest_to_dict(manifest))
+            await self.state.activate(session, module_id, manifest_to_dict(manifest), hub_id=hub_id)
 
             # Event
             await self.bus.emit(
@@ -1072,7 +1072,7 @@ class ModuleRuntime:
 
             # Set error status in DB
             try:
-                await self.state.set_error(session, hub_id, module_id, str(e))
+                await self.state.set_error(session, module_id, str(e), hub_id=hub_id)
             except Exception as db_err:
                 logger.error(
                     "Cleanup: failed to set error status in DB for %s: %s",
@@ -1104,7 +1104,7 @@ class ModuleRuntime:
 
         try:
             # Check current state
-            mod = await self.state.get_module(session, hub_id, module_id)
+            mod = await self.state.get_module(session, module_id, hub_id=hub_id)
             if mod is None:
                 result.error = f"Module {module_id} is not installed"
                 return result
@@ -1119,7 +1119,7 @@ class ModuleRuntime:
                 return result
 
             # Check dependents
-            check = await self.deps.check_can_deactivate(session, hub_id, module_id)
+            check = await self.deps.check_can_deactivate(session, module_id, hub_id=hub_id)
 
             if not check.can_deactivate:
                 if not cascade:
@@ -1129,7 +1129,7 @@ class ModuleRuntime:
                     return result
 
                 # Cascade deactivation (user confirmed)
-                await self.deps.deactivate_cascade(session, hub_id, module_id, self)
+                await self.deps.deactivate_cascade(session, module_id, self, hub_id=hub_id)
                 result.cascaded = check.cascade_order
 
             # Lifecycle hook
@@ -1139,7 +1139,7 @@ class ModuleRuntime:
             await self.loader.unload_module(module_id)
 
             # Update DB
-            await self.state.deactivate(session, hub_id, module_id)
+            await self.state.deactivate(session, module_id, hub_id=hub_id)
 
             # Event
             await self.bus.emit(
@@ -1158,7 +1158,7 @@ class ModuleRuntime:
 
             # Set error status in DB so the module isn't left in a ghost state
             try:
-                await self.state.set_error(session, hub_id, module_id, str(e))
+                await self.state.set_error(session, module_id, str(e), hub_id=hub_id)
             except Exception as db_err:
                 logger.error(
                     "Cleanup: failed to set error status in DB for %s: %s",
@@ -1188,7 +1188,7 @@ class ModuleRuntime:
 
         try:
             # Check current state
-            mod = await self.state.get_module(session, hub_id, module_id)
+            mod = await self.state.get_module(session, module_id, hub_id=hub_id)
             if mod is None:
                 result.error = f"Module {module_id} is not installed"
                 return result
@@ -1199,7 +1199,7 @@ class ModuleRuntime:
                 return result
 
             # Check dependents — NEVER cascade
-            check = await self.deps.check_can_uninstall(session, hub_id, module_id)
+            check = await self.deps.check_can_uninstall(session, module_id, hub_id=hub_id)
             if not check.can_uninstall:
                 result.dependents = check.dependents
                 result.error = (
@@ -1234,7 +1234,7 @@ class ModuleRuntime:
                 await self.migrations.downgrade(module_id, module_path, db_url)
 
             # Delete from DB
-            await self.state.delete(session, hub_id, module_id)
+            await self.state.delete(session, module_id, hub_id=hub_id)
 
             # Clean local cache
             if self.s3 is not None:
@@ -1260,7 +1260,7 @@ class ModuleRuntime:
 
             # Set error status in DB so the module isn't stuck in limbo
             try:
-                await self.state.set_error(session, hub_id, module_id, str(e))
+                await self.state.set_error(session, module_id, str(e), hub_id=hub_id)
             except Exception as db_err:
                 logger.error(
                     "Cleanup: failed to set error status in DB for %s: %s",
@@ -1305,7 +1305,7 @@ class ModuleRuntime:
 
         try:
             # Check current state
-            mod = await self.state.get_module(session, hub_id, module_id)
+            mod = await self.state.get_module(session, module_id, hub_id=hub_id)
             if mod is None:
                 result.error = f"Module {module_id} is not installed"
                 return result
@@ -1422,7 +1422,7 @@ class ModuleRuntime:
                 await self.lifecycle.call(module_id, "on_activate", session, hub_id)
 
             # 8. Update DB
-            await self.state.activate(session, hub_id, module_id, manifest_to_dict(manifest))
+            await self.state.activate(session, module_id, manifest_to_dict(manifest), hub_id=hub_id)
             # Update version and S3 info via direct update
             from sqlalchemy import update as sa_update
 
@@ -1477,7 +1477,7 @@ class ModuleRuntime:
 
             # Set error status in DB
             try:
-                await self.state.set_error(session, hub_id, module_id, str(e))
+                await self.state.set_error(session, module_id, str(e), hub_id=hub_id)
             except Exception as db_err:
                 logger.error(
                     "Cleanup: failed to set error status in DB for %s: %s",
@@ -1581,16 +1581,16 @@ class ModuleRuntime:
             # current key format produced by manifest_to_dict().
             await self.state.update_manifest(
                 session,
-                hub_id,
                 module_id,
                 manifest_to_dict(manifest),
+                hub_id=hub_id,
             )
 
             return True
         except Exception as e:
             logger.exception("Failed to load module %s from %s", module_id, module_path)
             try:
-                await self.state.set_error(session, hub_id, module_id, str(e))
+                await self.state.set_error(session, module_id, str(e), hub_id=hub_id)
             except Exception as db_err:
                 logger.error(
                     "Failed to set error status in DB for %s: %s",

@@ -102,6 +102,10 @@ class ModuleRegistry:
         """Check if a module is currently loaded."""
         return module_id in self._modules
 
+    def get_loaded_module_ids(self) -> list[str]:
+        """Return the IDs of every module currently loaded into the runtime."""
+        return list(self._modules.keys())
+
     # ------------------------------------------------------------------
     # Derived data
     # ------------------------------------------------------------------
