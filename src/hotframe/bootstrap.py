@@ -65,18 +65,45 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.slots = slots
     app.state.components = components
 
-    # 4b. HTTP client registry — named, authenticated httpx clients.
-    # Projects and modules register clients here; the registry closes
-    # every one on shutdown so no connection pool leaks.
-    from hotframe.http import HttpClientRegistry
-
-    app.state.http_clients = HttpClientRegistry()
-
-    # 5. Initialize Jinja2 template engine
+    # 4b. Resolve settings early — used by both the HTTP client registry
+    # (for ambient interceptor discovery) and the template engine below.
     from hotframe.config.settings import get_settings
-    from hotframe.templating.engine import create_template_engine
 
     settings = get_settings()
+
+    # 4c. HTTP client registry — named, authenticated httpx clients.
+    # Projects and modules register clients here; the registry closes
+    # every one on shutdown so no connection pool leaks.
+    #
+    # Interceptors are discovered from ``settings.HTTP_INTERCEPTOR_PATHS``
+    # (a list of filesystem paths containing Python files that define
+    # module-level :class:`Interceptor` instances) and installed as the
+    # registry's ambient pool. Any client registered later without an
+    # explicit ``interceptors=`` is auto-wrapped in the interceptors
+    # whose ``applies_to`` matcher picks its name.
+    from pathlib import Path as _Path
+
+    from hotframe.http import HttpClientRegistry, discover_interceptors
+
+    interceptor_paths = getattr(settings, "HTTP_INTERCEPTOR_PATHS", [])
+    if interceptor_paths:
+        try:
+            discovered = discover_interceptors(
+                [_Path(p) for p in interceptor_paths]
+            )
+        except Exception:
+            logger.exception(
+                "Failed to discover HTTP interceptors from %s", interceptor_paths
+            )
+            discovered = []
+    else:
+        discovered = []
+    app.state.http_interceptors = discovered
+    app.state.http_clients = HttpClientRegistry(ambient_interceptors=discovered)
+
+    # 5. Initialize Jinja2 template engine
+    from hotframe.templating.engine import create_template_engine
+
     app.state.templates = create_template_engine(modules_dir=settings.MODULES_DIR)
 
     # Expose the component registry to the Jinja2 environment so the

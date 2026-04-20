@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """hotframe — Modular Python web framework with hot-mount dynamic modules."""
 
-__version__ = "0.0.8"
+__version__ = "0.0.9"
 
 # ---------------------------------------------------------------------------
 # Lazy imports — only loaded when accessed
@@ -101,6 +101,15 @@ _LAZY_IMPORTS: dict[str, str] = {
     "HmacAuth": "hotframe.http",
     "CustomAuth": "hotframe.http",
     "NoAuth": "hotframe.http",
+    # HTTP interceptors
+    "Interceptor": "hotframe.http",
+    "InterceptorBase": "hotframe.http",
+    "CallNext": "hotframe.http",
+    "RetryInterceptor": "hotframe.http",
+    "CircuitBreakerInterceptor": "hotframe.http",
+    "RefreshInterceptor": "hotframe.http",
+    "exponential_backoff": "hotframe.http",
+    "discover_interceptors": "hotframe.http",
 }
 
 

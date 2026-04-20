@@ -66,6 +66,8 @@ The CLI installs two aliases: `hf` (short) and `hotframe` (explicit).
 
 - **Reusable components** — Server-rendered UI widgets with a required `template.html` and optional Pydantic-typed props, colocated HTTP routes, and per-component static assets. Apps and hot-mount modules contribute components; `hf startproject` scaffolds `alert` and `badge` as editable examples. Invoke from any template via `{{ render_component('name', ...) }}` or `{% component 'name' %}...{% endcomponent %}`.
 
+- **HTTP client subsystem** — `AuthenticatedClient` wraps `httpx.AsyncClient` with pluggable `Auth` strategies (`BearerAuth`, `ApiKeyAuth`, `BasicAuth`, `HmacAuth`, `CustomAuth`) and a per-app registry on `app.state.http_clients`. Since 0.0.9, an Angular-style **interceptor pipeline** layers `RetryInterceptor`, `CircuitBreakerInterceptor`, and `RefreshInterceptor` (plus any custom interceptor) around every registered client, auto-discovered from `apps/shared/interceptors/` and `modules/*/interceptors.py`. See [docs/HTTP_CLIENTS.md](docs/HTTP_CLIENTS.md) and [docs/http-interceptors.md](docs/http-interceptors.md).
+
 ---
 
 ## Comparison
@@ -157,6 +159,8 @@ Documentation is available in the [docs/](docs/) directory.
 - [Architecture](docs/ARCHITECTURE.md)
 - [Components](docs/COMPONENTS.md)
 - [Shell](docs/SHELL.md)
+- [HTTP clients](docs/HTTP_CLIENTS.md)
+- [HTTP interceptors](docs/http-interceptors.md)
 - [Changelog](docs/CHANGELOG.md)
 - [Security policy](docs/SECURITY.md)
 

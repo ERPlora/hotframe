@@ -1347,6 +1347,81 @@ def runserver(
 # ---------------------------------------------------------------------------
 
 
+def _extract_module_dependencies(module_path: Path) -> list[str]:
+    """Read ``DEPENDENCIES`` from a module's ``module.py`` without importing.
+
+    Importing would execute the module (registers, side effects). We parse
+    the file with AST and extract the ``DEPENDENCIES`` literal — supports
+    both ``DEPENDENCIES = [...]`` and ``DEPENDENCIES: list[str] = [...]``.
+
+    Returns an empty list if the file or attribute is absent or malformed —
+    a missing manifest means "no declared deps", not a fatal error.
+    """
+    import ast
+
+    manifest = module_path / "module.py"
+    if not manifest.exists():
+        return []
+    try:
+        tree = ast.parse(manifest.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError):
+        return []
+
+    for node in tree.body:
+        target_names: list[str] = []
+        value: ast.expr | None = None
+        if isinstance(node, ast.Assign):
+            target_names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+            value = node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            target_names = [node.target.id]
+            value = node.value
+        if "DEPENDENCIES" in target_names and isinstance(value, ast.List):
+            return [
+                elt.value
+                for elt in value.elts
+                if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+            ]
+    return []
+
+
+def _topo_sort_modules(
+    module_targets: list[tuple[str, Path]],
+) -> list[tuple[str, Path]]:
+    """Order modules so each comes after the modules it depends on.
+
+    Uses Kahn's algorithm. Modules with deps outside ``module_targets``
+    (e.g. optional, removed, or referencing apps) ignore those edges —
+    they cannot be migration prerequisites since they are not in scope.
+
+    Cycles raise ``typer.Exit`` with a clear list of the modules involved
+    so the operator can fix the manifests.
+    """
+    index = dict(module_targets)
+    deps: dict[str, set[str]] = {
+        mid: {d for d in _extract_module_dependencies(path) if d in index}
+        for mid, path in module_targets
+    }
+    # Kahn: repeatedly pick modules whose unresolved-deps set is empty.
+    ordered: list[tuple[str, Path]] = []
+    remaining = dict(deps)
+    while remaining:
+        ready = sorted(mid for mid, d in remaining.items() if not d)
+        if not ready:
+            cycle = ", ".join(sorted(remaining))
+            typer.echo(
+                f"Error: circular DEPENDENCIES detected among modules: {cycle}",
+                err=True,
+            )
+            raise typer.Exit(1)
+        for mid in ready:
+            ordered.append((mid, index[mid]))
+            remaining.pop(mid)
+            for d in remaining.values():
+                d.discard(mid)
+    return ordered
+
+
 @app.command()
 def migrate(
     name: str = typer.Argument(
@@ -1398,8 +1473,13 @@ def migrate(
                         and (d / "migrations").exists()
                     ):
                         targets.append((d.name, d))
-            # All modules
+            # All modules — collect first, then topologically sort by
+            # DEPENDENCIES from each module.py manifest. Cross-module FKs
+            # (e.g. commissions → services_service, kitchen_orders → tables)
+            # require the referenced module's tables to exist before alembic
+            # creates the FK constraint, so alphabetical order is unsafe.
             modules_dir = cwd / "modules"
+            module_targets: list[tuple[str, Path]] = []
             if modules_dir.exists():
                 for d in sorted(modules_dir.iterdir()):
                     if (
@@ -1407,7 +1487,11 @@ def migrate(
                         and not d.name.startswith((".", "_"))
                         and (d / "migrations").exists()
                     ):
-                        targets.append((d.name, d))
+                        module_targets.append((d.name, d))
+
+            if module_targets:
+                module_targets = _topo_sort_modules(module_targets)
+            targets.extend(module_targets)
 
         if not targets:
             typer.echo("No migrations found in apps/ or modules/")

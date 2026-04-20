@@ -478,6 +478,53 @@ class ModuleLoader:
                 ", ".join(report.zombie_classes),
             )
 
+        # 9b. Second-pass cleanup: if tables of this module still live in
+        # Base.metadata (because the first drop ran before purge and the
+        # purge revealed more references), remove them explicitly so the
+        # next install does not fail with 'Table x is already defined'.
+        leftover = self._verify_metadata_cleared(module_id)
+        if leftover:
+            from hotframe.models.base import Base
+
+            logger.warning(
+                "Module %s left %d table(s) in Base.metadata after purge: %s — forcing cleanup",
+                module_id,
+                len(leftover),
+                ", ".join(leftover),
+            )
+            for table_name in leftover:
+                table = Base.metadata.tables.get(table_name)
+                if table is None:
+                    continue
+                for mapper in list(Base.registry.mappers):
+                    if mapper.local_table is table:
+                        try:
+                            Base.registry._dispose_cls(mapper.class_)
+                        except Exception:
+                            logger.warning(
+                                "Forced registry dispose failed for %s (module=%s)",
+                                mapper.class_.__name__,
+                                module_id,
+                                exc_info=True,
+                            )
+                try:
+                    Base.metadata.remove(table)
+                except Exception:
+                    logger.warning(
+                        "Forced Base.metadata.remove failed for table %s (module=%s)",
+                        table_name,
+                        module_id,
+                        exc_info=True,
+                    )
+            still_leftover = self._verify_metadata_cleared(module_id)
+            if still_leftover:
+                logger.error(
+                    "Module %s: %d table(s) still registered after forced cleanup: %s — reinstall will likely fail",
+                    module_id,
+                    len(still_leftover),
+                    ", ".join(still_leftover),
+                )
+
         # 8b. Remove module middleware from Starlette stack
         entry = self.registry.get(module_id)
         if entry is not None and entry.middleware is not None:
@@ -684,8 +731,10 @@ class ModuleLoader:
         ``MetaData.remove(table)`` is the documented inverse of table
         registration; ``registry._dispose_cls`` is SQLAlchemy 2.0's
         official tear-down for a mapped class. Both are best-effort —
-        any exception is logged at debug level and swallowed because the
-        unload path must remain robust.
+        any exception is logged at warning level and swallowed because the
+        unload path must remain robust. Warnings (not debug) because a
+        silent failure here causes ``Table 'x' is already defined`` on the
+        next install of the same module.
         """
         from hotframe.models.base import Base
 
@@ -700,9 +749,10 @@ class ModuleLoader:
                 # Already removed — safe to ignore.
                 pass
             except Exception:
-                logger.debug(
-                    "Best-effort: could not remove table %r from Base.metadata",
+                logger.warning(
+                    "Best-effort: could not remove table %r from Base.metadata (module=%s)",
                     getattr(tbl, "name", tbl),
+                    module_id,
                     exc_info=True,
                 )
 
@@ -715,17 +765,19 @@ class ModuleLoader:
             try:
                 mapper._dispose()
             except Exception:
-                logger.debug(
-                    "Best-effort: mapper dispose failed for %s",
+                logger.warning(
+                    "Best-effort: mapper dispose failed for %s (module=%s)",
                     cls.__name__,
+                    module_id,
                     exc_info=True,
                 )
             try:
                 Base.registry._dispose_cls(cls)
             except Exception:
-                logger.debug(
-                    "Best-effort: registry dispose failed for %s",
+                logger.warning(
+                    "Best-effort: registry dispose failed for %s (module=%s)",
                     cls.__name__,
+                    module_id,
                     exc_info=True,
                 )
 
@@ -758,6 +810,31 @@ class ModuleLoader:
                 module_id,
             )
         return None
+
+    def _verify_metadata_cleared(self, module_id: str) -> list[str]:
+        """Return names of tables from ``module_id`` still in ``Base.metadata``.
+
+        Called after ``_drop_module_metadata`` + ``_purge_module`` to detect
+        leftover registrations that would collide on reinstall with
+        ``Table 'x' is already defined``.
+        """
+        from hotframe.models.base import Base
+
+        prefix = f"{module_id}."
+        leftover: list[str] = []
+        for table_name, table in list(Base.metadata.tables.items()):
+            info_module = getattr(table, "info", {}).get("module_id")
+            if info_module == module_id:
+                leftover.append(table_name)
+                continue
+            cls_module: str | None = None
+            for mapper in Base.registry.mappers:
+                if mapper.local_table is table:
+                    cls_module = mapper.class_.__module__
+                    break
+            if cls_module and (cls_module == module_id or cls_module.startswith(prefix)):
+                leftover.append(table_name)
+        return leftover
 
 
 # ------------------------------------------------------------------

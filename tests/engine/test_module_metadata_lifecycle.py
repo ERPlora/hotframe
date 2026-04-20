@@ -158,3 +158,59 @@ def test_drop_is_idempotent_on_unknown_module():
     loader.import_manager = MagicMock()
     # Should not raise even though the module was never registered.
     loader._drop_module_metadata("never_loaded_module")
+
+
+def test_verify_metadata_cleared_empty_after_drop(cleanup_modules):
+    """Normal path: after _drop_module_metadata, verify returns empty list."""
+    loader = _build_loader()
+    loader.import_manager = MagicMock()
+
+    _install_fake_models_module("metalc_verify_a", "metalc_verify_a")
+    loader._register_exported_models("metalc_verify_a")
+    loader._drop_module_metadata("metalc_verify_a")
+    # sys.modules cleanup so the mapper lookup in _verify can't find it.
+    sys.modules.pop("metalc_verify_a.models", None)
+
+    leftover = loader._verify_metadata_cleared("metalc_verify_a")
+    assert leftover == []
+
+
+def test_verify_metadata_cleared_detects_leftover(cleanup_modules):
+    """If a table of module X is still in Base.metadata, _verify reports it.
+
+    Reproduces the zombie-class scenario: _drop ran but the mapped class
+    still lives in Base.registry (e.g. because an external cache held a
+    reference), so the table is still queryable in metadata.
+    """
+    loader = _build_loader()
+    loader.import_manager = MagicMock()
+
+    fake_cls = _install_fake_models_module("metalc_verify_b", "metalc_verify_b")
+    loader._register_exported_models("metalc_verify_b")
+
+    # Intentionally skip _drop_module_metadata to simulate leftover.
+    # fake_cls.__module__ is "__main__" by default (type() creates it there),
+    # so force it to match the module_id for the check.
+    fake_cls.__module__ = "metalc_verify_b.models"
+
+    leftover = loader._verify_metadata_cleared("metalc_verify_b")
+    assert fake_cls.__tablename__ in leftover
+
+
+def test_verify_metadata_cleared_ignores_foreign_tables(cleanup_modules):
+    """Tables owned by other modules must not be reported as leftover."""
+    loader = _build_loader()
+    loader.import_manager = MagicMock()
+
+    # Register a table under module "other_mod"
+    other_cls = _install_fake_models_module("other_mod", "other_mod")
+    loader._register_exported_models("other_mod")
+    other_cls.__module__ = "other_mod.models"
+
+    # Query for a different, unrelated module
+    leftover = loader._verify_metadata_cleared("some_unrelated_module")
+    assert other_cls.__tablename__ not in leftover
+    assert leftover == []
+
+    # Cleanup to not leak into other tests
+    loader._drop_module_metadata("other_mod")

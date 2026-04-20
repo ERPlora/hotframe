@@ -183,6 +183,13 @@ class HotframeSettings(BaseSettings):
     # Off by default: zero cost when not explicitly enabled.
     HTTP_CLIENT_EVENTS: bool = False
 
+    # Filesystem paths scanned on startup for ambient HTTP interceptors.
+    # Each ``.py`` file is imported and module-level attributes that
+    # satisfy the ``hotframe.http.Interceptor`` protocol are collected
+    # into ``app.state.http_interceptors`` and auto-applied to every
+    # client registered without an explicit ``interceptors=`` list.
+    HTTP_INTERCEPTOR_PATHS: list[str] = []
+
     # --- Module state model ---
     # Dotted path to the SQLAlchemy model used for module state tracking.
     # Must have: module_id, status, version, manifest, config, error_message,
