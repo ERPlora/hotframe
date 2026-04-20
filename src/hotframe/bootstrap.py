@@ -65,6 +65,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.slots = slots
     app.state.components = components
 
+    # 4b. HTTP client registry — named, authenticated httpx clients.
+    # Projects and modules register clients here; the registry closes
+    # every one on shutdown so no connection pool leaks.
+    from hotframe.http import HttpClientRegistry
+
+    app.state.http_clients = HttpClientRegistry()
+
     # 5. Initialize Jinja2 template engine
     from hotframe.config.settings import get_settings
     from hotframe.templating.engine import create_template_engine
@@ -144,6 +151,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # --- SHUTDOWN ---
     if app.state.module_runtime is not None:
         await app.state.module_runtime.shutdown()
+
+    # Close every HTTP client still registered — project-scoped clients
+    # live for the process, and modules may have skipped their own
+    # unregister on deactivate. The registry is defensive and swallows
+    # per-client close errors.
+    http_clients = getattr(app.state, "http_clients", None)
+    if http_clients is not None:
+        await http_clients.aclose_all()
 
     from hotframe.config.database import dispose_engine
 

@@ -7,6 +7,22 @@ All notable changes to `hotframe` are documented here. The format follows [Keep 
 ### Added
 - Work in progress. Not yet released.
 
+## [0.0.8] - 2026-04-20
+
+### Added
+- HTTP clients subsystem (`hotframe.http`): named, authenticated `httpx.AsyncClient` wrappers registered on `app.state.http_clients`. Projects and modules register clients under a name; lookups are by that name from any route, service, or background task.
+- `AuthenticatedClient` wraps `httpx.AsyncClient` and applies an `Auth` strategy on every request via `httpx` event hooks. Delegates connection pooling, streaming, and timeouts to `httpx` — no re-implementation.
+- `Auth` strategies: `BearerAuth`, `ApiKeyAuth`, `QueryApiKeyAuth`, `BasicAuth`, `HmacAuth`, `CustomAuth`, `NoAuth`. Credential sources accept strings or sync/async callables that are re-read on every request, so rotating a secret never requires a restart.
+- `HttpClientRegistry`: named registry with `register`, `replace`, `get`, `__getitem__`, `unregister`, `unregister_module`, `list_registered`, `aclose_all`. Tracks per-module ownership so `ModuleLoader.unload_module` drops every client a module registered as a safety net, symmetric to slot and component teardown.
+- `HotframeSettings.HTTP_CLIENT_EVENTS` (default `False`): when enabled, `AuthenticatedClient` emits `http.request.started`, `http.request.completed`, and `http.request.failed` through the app's `EventBus`. Credentials are never included in payloads.
+- Lifespan: `app.state.http_clients` created at startup, closed at shutdown. Connection pools never leak across the process.
+- Public docs: `docs/HTTP_CLIENTS.md` with recipes for Stripe, WhatsApp, JWT-in-custom-header, SigV4, and dynamic OAuth refresh.
+
+### Tests
+- `tests/test_http_clients.py` (51 tests) covering every auth strategy, `AuthenticatedClient` behavior against `httpx.MockTransport`, registry operations, module ownership cleanup, event emission, and integration with `create_app`.
+
+Total: **251 tests passing**, up from 200.
+
 ## [0.0.7] - 2026-04-20
 
 ### Fixed
