@@ -33,8 +33,7 @@ from hotframe.migrations.env_helpers import _read_dependencies
 def _write_manifest(module_dir: Path, deps: list[str]) -> None:
     module_dir.mkdir(parents=True, exist_ok=True)
     (module_dir / "module.py").write_text(
-        f"MODULE_ID = \"{module_dir.name}\"\n"
-        f"DEPENDENCIES: list[str] = {deps!r}\n"
+        f'MODULE_ID = "{module_dir.name}"\nDEPENDENCIES: list[str] = {deps!r}\n'
     )
 
 
@@ -52,9 +51,7 @@ class TestExtractModuleDependencies:
     def test_reads_plain_assignment(self, tmp_path: Path):
         module_dir = tmp_path / "mod_b"
         module_dir.mkdir()
-        (module_dir / "module.py").write_text(
-            'DEPENDENCIES = ["inventory"]\n'
-        )
+        (module_dir / "module.py").write_text('DEPENDENCIES = ["inventory"]\n')
         assert _extract_module_dependencies(module_dir) == ["inventory"]
 
     def test_missing_manifest_returns_empty(self, tmp_path: Path):
@@ -82,10 +79,12 @@ class TestTopoSortModules:
     def test_dep_is_migrated_before_dependent(self, tmp_path: Path):
         _write_manifest(tmp_path / "services", [])
         _write_manifest(tmp_path / "commissions", ["services"])
-        ordered = _topo_sort_modules([
-            ("commissions", tmp_path / "commissions"),
-            ("services", tmp_path / "services"),
-        ])
+        ordered = _topo_sort_modules(
+            [
+                ("commissions", tmp_path / "commissions"),
+                ("services", tmp_path / "services"),
+            ]
+        )
         names = [name for name, _ in ordered]
         assert names.index("services") < names.index("commissions")
 
@@ -94,12 +93,14 @@ class TestTopoSortModules:
         _write_manifest(tmp_path / "services", [])
         _write_manifest(tmp_path / "appointments", ["staff", "services"])
         _write_manifest(tmp_path / "commissions", ["appointments"])
-        ordered = _topo_sort_modules([
-            ("commissions", tmp_path / "commissions"),
-            ("appointments", tmp_path / "appointments"),
-            ("services", tmp_path / "services"),
-            ("staff", tmp_path / "staff"),
-        ])
+        ordered = _topo_sort_modules(
+            [
+                ("commissions", tmp_path / "commissions"),
+                ("appointments", tmp_path / "appointments"),
+                ("services", tmp_path / "services"),
+                ("staff", tmp_path / "staff"),
+            ]
+        )
         names = [name for name, _ in ordered]
         for dep, dependent in [
             ("staff", "appointments"),
@@ -113,9 +114,11 @@ class TestTopoSortModules:
     def test_unknown_deps_are_ignored(self, tmp_path: Path):
         """Deps outside the target set (e.g. removed modules) do not block."""
         _write_manifest(tmp_path / "onlyone", ["ghost_module"])
-        ordered = _topo_sort_modules([
-            ("onlyone", tmp_path / "onlyone"),
-        ])
+        ordered = _topo_sort_modules(
+            [
+                ("onlyone", tmp_path / "onlyone"),
+            ]
+        )
         assert [name for name, _ in ordered] == ["onlyone"]
 
     def test_cycle_raises_typer_exit(self, tmp_path: Path):
@@ -124,10 +127,12 @@ class TestTopoSortModules:
         _write_manifest(tmp_path / "a", ["b"])
         _write_manifest(tmp_path / "b", ["a"])
         with pytest.raises(typer.Exit):
-            _topo_sort_modules([
-                ("a", tmp_path / "a"),
-                ("b", tmp_path / "b"),
-            ])
+            _topo_sort_modules(
+                [
+                    ("a", tmp_path / "a"),
+                    ("b", tmp_path / "b"),
+                ]
+            )
 
     def test_empty_input(self, tmp_path: Path):
         assert _topo_sort_modules([]) == []

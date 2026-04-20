@@ -36,7 +36,9 @@ class TestModuleRegistry:
 
         registry = ModuleRegistry()
         manifest = ModuleManifest(
-            MODULE_ID="demo", MODULE_NAME="Demo", MODULE_VERSION="1.0.0",
+            MODULE_ID="demo",
+            MODULE_NAME="Demo",
+            MODULE_VERSION="1.0.0",
         )
         registry.register(
             module_id="demo",

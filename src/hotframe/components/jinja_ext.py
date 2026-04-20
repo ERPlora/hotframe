@@ -165,9 +165,7 @@ class ComponentExtension(Extension):
         env = self.environment
         registry = env.globals.get("_hotframe_components")
         if registry is None:
-            logger.warning(
-                "{%% component %%} used before ComponentRegistry was bound to the env"
-            )
+            logger.warning("{%% component %%} used before ComponentRegistry was bound to the env")
             return Markup("")
 
         entry = registry.get(__component_name__)

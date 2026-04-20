@@ -105,9 +105,7 @@ class RetryInterceptor(InterceptorBase):
         self._max_attempts = max_attempts
         self._backoff = backoff or (lambda _attempt: 0.0)
 
-    async def intercept(
-        self, request: httpx.Request, call_next: CallNext
-    ) -> httpx.Response:
+    async def intercept(self, request: httpx.Request, call_next: CallNext) -> httpx.Response:
         last_response: httpx.Response | None = None
         for attempt in range(self._max_attempts):
             response = await call_next(request)
@@ -174,9 +172,7 @@ class CircuitBreakerInterceptor(InterceptorBase):
         if threshold < 1:
             raise ValueError("CircuitBreakerInterceptor.threshold must be >= 1")
         if recovery_seconds <= 0:
-            raise ValueError(
-                "CircuitBreakerInterceptor.recovery_seconds must be > 0"
-            )
+            raise ValueError("CircuitBreakerInterceptor.recovery_seconds must be > 0")
         self.name = name
         self.applies_to = applies_to
         self.order = order
@@ -197,17 +193,12 @@ class CircuitBreakerInterceptor(InterceptorBase):
         """Return the current breaker state: ``closed``/``open``/``half_open``."""
         return self._state
 
-    async def intercept(
-        self, request: httpx.Request, call_next: CallNext
-    ) -> httpx.Response:
+    async def intercept(self, request: httpx.Request, call_next: CallNext) -> httpx.Response:
         async with self._lock:
             now = time.monotonic()
             if self._state == self._OPEN:
                 # Still cooling down?
-                if (
-                    self._opened_at is not None
-                    and now - self._opened_at < self._recovery_seconds
-                ):
+                if self._opened_at is not None and now - self._opened_at < self._recovery_seconds:
                     raise httpx.ConnectError(
                         f"Circuit breaker {self.name!r} is open — short-circuiting "
                         f"({self._failures} consecutive failures)",
@@ -300,9 +291,7 @@ class RefreshInterceptor(InterceptorBase):
         self._on_status = on_status
         self._max_retries = max_retries
 
-    async def intercept(
-        self, request: httpx.Request, call_next: CallNext
-    ) -> httpx.Response:
+    async def intercept(self, request: httpx.Request, call_next: CallNext) -> httpx.Response:
         response = await call_next(request)
         retries = 0
         while response.status_code == self._on_status and retries < self._max_retries:
@@ -310,8 +299,7 @@ class RefreshInterceptor(InterceptorBase):
                 await self._refresh()
             except Exception:
                 logger.exception(
-                    "RefreshInterceptor %r: refresh callback failed; "
-                    "returning original response",
+                    "RefreshInterceptor %r: refresh callback failed; returning original response",
                     self.name,
                 )
                 return response

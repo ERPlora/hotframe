@@ -188,11 +188,7 @@ def unmount_component_routers_for_module(app: FastAPI, module_id: str) -> int:
     if registry is None:
         return 0
 
-    names = [
-        entry.name
-        for entry in registry.list_components()
-        if entry.module_id == module_id
-    ]
+    names = [entry.name for entry in registry.list_components() if entry.module_id == module_id]
     if not names:
         return 0
 
@@ -204,9 +200,7 @@ def unmount_component_routers_for_module(app: FastAPI, module_id: str) -> int:
     routes[:] = [
         route
         for route in routes
-        if not _any_component_subtree_match(
-            _route_path(route), prefixes, prefixes_slash
-        )
+        if not _any_component_subtree_match(_route_path(route), prefixes, prefixes_slash)
     ]
     removed = original - len(routes)
 

@@ -88,13 +88,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     interceptor_paths = getattr(settings, "HTTP_INTERCEPTOR_PATHS", [])
     if interceptor_paths:
         try:
-            discovered = discover_interceptors(
-                [_Path(p) for p in interceptor_paths]
-            )
+            discovered = discover_interceptors([_Path(p) for p in interceptor_paths])
         except Exception:
-            logger.exception(
-                "Failed to discover HTTP interceptors from %s", interceptor_paths
-            )
+            logger.exception("Failed to discover HTTP interceptors from %s", interceptor_paths)
             discovered = []
     else:
         discovered = []

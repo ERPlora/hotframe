@@ -119,9 +119,7 @@ def _load_router(py_path: Path, module_name: str) -> APIRouter | None:
         return None
     router = getattr(mod, "router", None)
     if router is None:
-        logger.warning(
-            "Component routes file %s has no module-level `router` attribute", py_path
-        )
+        logger.warning("Component routes file %s has no module-level `router` attribute", py_path)
         return None
     return router
 

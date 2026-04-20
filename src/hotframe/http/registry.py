@@ -61,9 +61,7 @@ class HttpClientRegistry:
     # Ambient interceptors
     # ------------------------------------------------------------------
 
-    def set_ambient_interceptors(
-        self, interceptors: list[Interceptor] | None
-    ) -> None:
+    def set_ambient_interceptors(self, interceptors: list[Interceptor] | None) -> None:
         """Replace the ambient interceptor pool.
 
         Subsequent ``register()`` calls without an explicit

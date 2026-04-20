@@ -21,7 +21,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _get_module_model() -> type:
+if TYPE_CHECKING:
+    # Type alias for the configurable module-state ORM class. Projects swap
+    # in their own model via ``settings.MODULE_STATE_MODEL``; the chosen
+    # class is a SQLAlchemy declarative whose columns are accessed both as
+    # values (instance.module_id) and as descriptors (Model.module_id in a
+    # ``select`` / ``update``). No single static type can express both, so
+    # we collapse to ``Any`` at the public boundary. The runtime contract —
+    # that the model must expose the columns of ``hotframe.engine.models.Module`` —
+    # is documented and enforced by tests, not by the type system.
+    ModuleStateRow = Any
+else:
+    ModuleStateRow = Any
+
+
+def _get_module_model() -> type[ModuleStateRow]:
     """Resolve the module state model from settings."""
     from hotframe.config.settings import get_settings
 
@@ -44,7 +58,7 @@ class ModuleAlreadyInstallingError(Exception):
 class ModuleStateDB:
     """CRUD operations on the module state table."""
 
-    def _model(self) -> type:
+    def _model(self) -> type[ModuleStateRow]:
         return _get_module_model()
 
     async def get_active_modules(self, session: ISession, **filters: Any) -> list:

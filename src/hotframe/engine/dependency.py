@@ -19,6 +19,8 @@ from hotframe.apps.config import ModuleManifest
 from hotframe.engine.state import _get_module_model
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from hotframe.db.protocols import ISession
     from hotframe.engine.module_runtime import ModuleRuntime
 
@@ -234,11 +236,15 @@ class DependencyManager:
     ) -> None:
         """Deactivate all active modules that depend on module_id in reverse dependency order."""
         cascade = await self._build_cascade_order(session, module_id, **filters)
+        # ModuleRuntime.deactivate expects (session, hub_id, module_id) — pull
+        # the hub_id out of the dynamic filter bag (it is the only filter the
+        # runtime cares about) and forward it positionally.
+        hub_id: UUID = filters["hub_id"]
         for mid in cascade:
             if mid == module_id:
                 continue
             logger.info("Cascade deactivating %s (depends on %s)", mid, module_id)
-            await runtime.deactivate(session, mid, cascade=False, **filters)
+            await runtime.deactivate(session, hub_id, mid, cascade=False)
 
     async def _build_cascade_order(
         self,

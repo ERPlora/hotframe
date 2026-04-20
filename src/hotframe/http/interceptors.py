@@ -58,9 +58,7 @@ class Interceptor(Protocol):
     applies_to: str | list[str] | Callable[[str], bool]
     order: int
 
-    async def intercept(
-        self, request: httpx.Request, call_next: CallNext
-    ) -> httpx.Response:
+    async def intercept(self, request: httpx.Request, call_next: CallNext) -> httpx.Response:
         """Wrap the dispatch of ``request``.
 
         Implementations must eventually ``await call_next(request)`` to
@@ -103,9 +101,7 @@ class InterceptorBase:
         # application to every client.
         return False
 
-    async def intercept(
-        self, request: httpx.Request, call_next: CallNext
-    ) -> httpx.Response:
+    async def intercept(self, request: httpx.Request, call_next: CallNext) -> httpx.Response:
         """Default pass-through: just forward to ``call_next``."""
         return await call_next(request)
 

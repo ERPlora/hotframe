@@ -70,9 +70,7 @@ class _RecordingInterceptor(InterceptorBase):
         self._tag = tag
         self._trace = trace
 
-    async def intercept(
-        self, request: httpx.Request, call_next: CallNext
-    ) -> httpx.Response:
+    async def intercept(self, request: httpx.Request, call_next: CallNext) -> httpx.Response:
         self._trace.append(f"{self._tag}:before")
         response = await call_next(request)
         self._trace.append(f"{self._tag}:after")
@@ -219,9 +217,7 @@ class TestRetryInterceptor:
             calls += 1
             return httpx.Response(503)
 
-        interceptor = RetryInterceptor(
-            on_status=[503], max_attempts=3, backoff=backoff
-        )
+        interceptor = RetryInterceptor(on_status=[503], max_attempts=3, backoff=backoff)
         chain = build_chain([interceptor], terminal)
         await chain(httpx.Request("GET", "https://x/"))
 
@@ -620,7 +616,7 @@ class TestRegistryAmbientInterceptors:
 # ---------------------------------------------------------------------------
 
 
-VALID_INTERCEPTOR_FILE = '''
+VALID_INTERCEPTOR_FILE = """
 from hotframe.http import InterceptorBase
 
 class MyInterceptor(InterceptorBase):
@@ -632,10 +628,10 @@ class MyInterceptor(InterceptorBase):
         return await call_next(request)
 
 custom = MyInterceptor()
-'''
+"""
 
 
-DUPLICATE_INTERCEPTOR_FILE = '''
+DUPLICATE_INTERCEPTOR_FILE = """
 from hotframe.http import InterceptorBase
 
 class MyInterceptor(InterceptorBase):
@@ -647,10 +643,10 @@ class MyInterceptor(InterceptorBase):
         return await call_next(request)
 
 custom = MyInterceptor()
-'''
+"""
 
 
-SECOND_VALID_FILE = '''
+SECOND_VALID_FILE = """
 from hotframe.http import InterceptorBase
 
 class SecondInterceptor(InterceptorBase):
@@ -662,21 +658,21 @@ class SecondInterceptor(InterceptorBase):
         return await call_next(request)
 
 second = SecondInterceptor()
-'''
+"""
 
 
-MALFORMED_FILE = '''
+MALFORMED_FILE = """
 this is not valid python !!!
-'''
+"""
 
 
-NON_INTERCEPTOR_FILE = '''
+NON_INTERCEPTOR_FILE = """
 # No interceptor-like objects here.
 FOO = "bar"
 
 def helper():
     return 1
-'''
+"""
 
 
 class TestDiscoverInterceptors:

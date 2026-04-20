@@ -101,9 +101,7 @@ class ComponentRegistry:
         Mirrors :meth:`hotframe.templating.slots.SlotRegistry.unregister_module`.
         """
         to_remove = [
-            name
-            for name, entry in self._components.items()
-            if entry.module_id == module_id
+            name for name, entry in self._components.items() if entry.module_id == module_id
         ]
         for name in to_remove:
             del self._components[name]

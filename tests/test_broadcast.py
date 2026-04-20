@@ -125,16 +125,11 @@ class TestWsStreamRegistered:
         # Find a websocket route whose path matches /ws/stream/{topic}.
         from starlette.routing import WebSocketRoute
 
-        ws_routes = [
-            r for r in app.routes if isinstance(r, WebSocketRoute)
-        ]
-        matched = [
-            r for r in ws_routes if "/ws/stream/" in getattr(r, "path", "")
-        ]
+        ws_routes = [r for r in app.routes if isinstance(r, WebSocketRoute)]
+        matched = [r for r in ws_routes if "/ws/stream/" in getattr(r, "path", "")]
         assert matched, (
             "ws_broadcast_handler must be registered at /ws/stream/{topic} "
-            "— found routes: "
-            + ", ".join(getattr(r, "path", "?") for r in ws_routes)
+            "— found routes: " + ", ".join(getattr(r, "path", "?") for r in ws_routes)
         )
 
     def test_ws_stream_requires_auth(self):
@@ -161,9 +156,7 @@ class TestWsStreamRegistered:
             # depending on how the test client surfaces the close. Any
             # close is acceptable as long as middleware didn't reject
             # the upgrade with 403.
-            assert exc.code in (4401, 1005, 1000, 1001, 1006), (
-                f"unexpected close code: {exc.code}"
-            )
+            assert exc.code in (4401, 1005, 1000, 1001, 1006), f"unexpected close code: {exc.code}"
 
 
 class TestWebsocketPassesMiddleware:

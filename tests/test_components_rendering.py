@@ -102,16 +102,12 @@ class TestRenderComponentGlobal:
         result = tpl.render()
         assert "<div>T|x</div>" in result
 
-    def test_python_component_missing_required_prop_logs_warning(
-        self, tmp_root, caplog
-    ):
+    def test_python_component_missing_required_prop_logs_warning(self, tmp_root, caplog):
         comp = tmp_root / "card"
         comp.mkdir()
         (comp / "template.html").write_text("<div>{{ title }}</div>")
         (comp / "component.py").write_text(
-            "from hotframe.components import Component\n\n"
-            "class Card(Component):\n"
-            "    title: str\n"
+            "from hotframe.components import Component\n\nclass Card(Component):\n    title: str\n"
         )
         registry = ComponentRegistry()
         for e in discover_components(tmp_root, import_prefix="_hf_render_missing"):
@@ -122,9 +118,7 @@ class TestRenderComponentGlobal:
         with caplog.at_level("WARNING"):
             result = tpl.render()
         assert "invalid props" in result
-        assert any(
-            "prop validation failed" in rec.message for rec in caplog.records
-        )
+        assert any("prop validation failed" in rec.message for rec in caplog.records)
 
     def test_framework_slice_is_injected(self, tmp_root):
         _write_template(
@@ -173,9 +167,7 @@ class TestComponentTag:
             registry.register(e)
 
         env = _make_env_with_registry([tmp_root], registry)
-        tpl = env.from_string(
-            "{% component 'modal' title='Hi' %}<p>Sure?</p>{% endcomponent %}"
-        )
+        tpl = env.from_string("{% component 'modal' title='Hi' %}<p>Sure?</p>{% endcomponent %}")
         result = tpl.render()
         assert "<div class='modal'>Hi::<p>Sure?</p></div>" in result
 
@@ -211,9 +203,7 @@ class TestComponentTag:
             registry.register(e)
 
         env = _make_env_with_registry([tmp_root], registry)
-        tpl = env.from_string(
-            "{% component 'probe' %}inner{% endcomponent %}"
-        )
+        tpl = env.from_string("{% component 'probe' %}inner{% endcomponent %}")
         result = tpl.render(csrf_token="tok")
         assert "csrf=tok" in result
         assert "inner" in result
@@ -232,18 +222,14 @@ class TestAlertAndBadgeLocal:
         _write_template(
             tmp_root,
             "alert/template.html",
-            '<div class="alert alert-{{ type | default(\'info\') }}" role="alert">'
-            "{{ body }}"
-            "</div>",
+            '<div class="alert alert-{{ type | default(\'info\') }}" role="alert">{{ body }}</div>',
         )
         registry = ComponentRegistry()
         for e in discover_components(tmp_root, import_prefix="_hf_local_alert"):
             registry.register(e)
 
         env = _make_env_with_registry([tmp_root], registry)
-        tpl = env.from_string(
-            "{% component 'alert' type='warning' %}Careful!{% endcomponent %}"
-        )
+        tpl = env.from_string("{% component 'alert' type='warning' %}Careful!{% endcomponent %}")
         result = tpl.render()
         assert 'class="alert alert-warning"' in result
         assert "Careful!" in result
@@ -252,18 +238,14 @@ class TestAlertAndBadgeLocal:
         _write_template(
             tmp_root,
             "badge/template.html",
-            '<span class="badge badge-{{ variant | default(\'default\') }}">'
-            "{{ text }}"
-            "</span>",
+            "<span class=\"badge badge-{{ variant | default('default') }}\">{{ text }}</span>",
         )
         registry = ComponentRegistry()
         for e in discover_components(tmp_root, import_prefix="_hf_local_badge"):
             registry.register(e)
 
         env = _make_env_with_registry([tmp_root], registry)
-        tpl = env.from_string(
-            "{{ render_component('badge', text='New', variant='primary') }}"
-        )
+        tpl = env.from_string("{{ render_component('badge', text='New', variant='primary') }}")
         result = tpl.render()
         assert 'class="badge badge-primary"' in result
         assert "New" in result
@@ -276,9 +258,7 @@ class TestNameCollision:
         # Component template uses a ``name`` prop directly.
         _write_template(tmp_root, "user/template.html", "<span>{{ name }}</span>")
         registry = ComponentRegistry()
-        entries = discover_components(
-            tmp_root, import_prefix="_hf_test_collision_global"
-        )
+        entries = discover_components(tmp_root, import_prefix="_hf_test_collision_global")
         for e in entries:
             registry.register(e)
 
@@ -294,16 +274,12 @@ class TestNameCollision:
             "<span>{{ name }}</span>{% if body %}<i>{{ body }}</i>{% endif %}",
         )
         registry = ComponentRegistry()
-        entries = discover_components(
-            tmp_root, import_prefix="_hf_test_collision_tag"
-        )
+        entries = discover_components(tmp_root, import_prefix="_hf_test_collision_tag")
         for e in entries:
             registry.register(e)
 
         env = _make_env_with_registry([tmp_root], registry)
-        tpl = env.from_string(
-            "{% component 'user_badge' name='Ioan' %}admin{% endcomponent %}"
-        )
+        tpl = env.from_string("{% component 'user_badge' name='Ioan' %}admin{% endcomponent %}")
         result = tpl.render()
         assert "<span>Ioan</span>" in result
         assert "<i>admin</i>" in result
@@ -322,6 +298,4 @@ class TestNoRegistryInjected:
         with caplog.at_level("WARNING"):
             result = env.get_template("t.html").render()
         assert result == ""
-        assert any(
-            "ComponentRegistry was bound" in rec.message for rec in caplog.records
-        )
+        assert any("ComponentRegistry was bound" in rec.message for rec in caplog.records)

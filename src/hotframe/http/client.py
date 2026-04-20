@@ -285,9 +285,7 @@ class AuthenticatedClient:
         except Exception:
             # Event emission must never break an HTTP call. Log and
             # carry on — observability failures are not business logic.
-            logger.exception(
-                "Failed to emit %s for client %r", event_name, self._name
-            )
+            logger.exception("Failed to emit %s for client %r", event_name, self._name)
 
     def __repr__(self) -> str:
         return (

@@ -412,8 +412,7 @@ class ModuleRuntime:
             acquired = await self._try_acquire_boot_lock(session, hub_id=None)
             if not acquired:
                 logger.info(
-                    "Another worker holds the boot lock — mounting routes "
-                    "locally without DB writes"
+                    "Another worker holds the boot lock — mounting routes locally without DB writes"
                 )
             await self.boot(session, hub_id=None, skip_db_writes=not acquired)  # type: ignore[arg-type]
             return len(active)
@@ -446,7 +445,9 @@ class ModuleRuntime:
                     hub_id,
                 )
 
-        logger.info("Boot pass complete: attempted %d module(s) across %d hub(s)", total, len(hub_ids))
+        logger.info(
+            "Boot pass complete: attempted %d module(s) across %d hub(s)", total, len(hub_ids)
+        )
         return total
 
     async def _try_acquire_boot_lock(

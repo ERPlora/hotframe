@@ -121,12 +121,15 @@ class TestModuleStateDBSignature:
 
         runtime_src = (
             Path(__file__).resolve().parent.parent
-            / "src" / "hotframe" / "engine" / "module_runtime.py"
+            / "src"
+            / "hotframe"
+            / "engine"
+            / "module_runtime.py"
         ).read_text(encoding="utf-8")
         # The exact pattern that previously triggered the TypeError.
-        assert (
-            "self.state.get_module(session, hub_id, module_id)" not in runtime_src
-        ), "module_runtime.py reverted to the broken positional get_module() call"
+        assert "self.state.get_module(session, hub_id, module_id)" not in runtime_src, (
+            "module_runtime.py reverted to the broken positional get_module() call"
+        )
 
 
 class TestBootAllActiveModules:
@@ -168,8 +171,7 @@ class TestBootAllActiveModules:
         from pathlib import Path
 
         bootstrap_src = (
-            Path(__file__).resolve().parent.parent
-            / "src" / "hotframe" / "bootstrap.py"
+            Path(__file__).resolve().parent.parent / "src" / "hotframe" / "bootstrap.py"
         ).read_text(encoding="utf-8")
         assert "boot_all_active_modules" in bootstrap_src, (
             "bootstrap.py lifespan no longer calls "

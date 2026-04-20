@@ -242,8 +242,7 @@ class TestHmacAuth:
 
         signature = hmac.new(b"s3cret", body, sha256).hexdigest()
         assert (
-            requests[0].headers["authorization"]
-            == f"HMAC-SHA256 KeyId=id-1, Signature={signature}"
+            requests[0].headers["authorization"] == f"HMAC-SHA256 KeyId=id-1, Signature={signature}"
         )
 
     async def test_signs_empty_body(self):
@@ -487,9 +486,7 @@ class TestHttpClientRegistry:
     def _make_client(self, name: str = "test") -> AuthenticatedClient:
         return AuthenticatedClient(
             auth=NoAuth(),
-            transport=httpx.MockTransport(
-                lambda request: httpx.Response(200, json={"name": name})
-            ),
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"name": name})),
         )
 
     async def test_register_and_lookup(self):

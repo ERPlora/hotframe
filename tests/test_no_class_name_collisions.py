@@ -30,9 +30,7 @@ from hotframe.models.base import Base
 
 
 def test_no_class_name_collisions_on_shared_base() -> None:
-    counts = collections.Counter(
-        mapper.class_.__name__ for mapper in Base.registry.mappers
-    )
+    counts = collections.Counter(mapper.class_.__name__ for mapper in Base.registry.mappers)
     duplicates = {name: count for name, count in counts.items() if count > 1}
     assert not duplicates, (
         "Class name collisions on shared SQLAlchemy Base — relationship() "

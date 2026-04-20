@@ -67,8 +67,7 @@ async def _resolve_source(source: CredentialSource) -> str:
         value = await value
     if not isinstance(value, str):
         raise TypeError(
-            "Auth credential source callable must return a string, "
-            f"got {type(value).__name__}"
+            f"Auth credential source callable must return a string, got {type(value).__name__}"
         )
     return value
 

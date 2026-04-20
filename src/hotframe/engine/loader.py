@@ -236,13 +236,9 @@ class ModuleLoader:
                 )
                 if discovered:
                     components_registered = True
-                    if mount_component_routers_for_module(
-                        self.app, self.components, module_id
-                    ):
+                    if mount_component_routers_for_module(self.app, self.components, module_id):
                         components_router_mounted = True
-                    if mount_component_static_for_module(
-                        self.app, self.components, module_id
-                    ):
+                    if mount_component_static_for_module(self.app, self.components, module_id):
                         components_static_mounted = True
 
             # 14. Bust OpenAPI cache

@@ -100,9 +100,7 @@ class TestDiscoverTemplateOnly:
 class TestDiscoverPythonComponent:
     def test_python_component_has_props_cls(self, tmp_components_root):
         _make_python_component(tmp_components_root, "card")
-        entries = discover_components(
-            tmp_components_root, import_prefix="_hf_test_python"
-        )
+        entries = discover_components(tmp_components_root, import_prefix="_hf_test_python")
         assert len(entries) == 1
         e = entries[0]
         assert e.props_cls is not None
@@ -111,9 +109,7 @@ class TestDiscoverPythonComponent:
 
     def test_render_fn_validates_and_returns_context(self, tmp_components_root):
         _make_python_component(tmp_components_root, "card")
-        entries = discover_components(
-            tmp_components_root, import_prefix="_hf_test_python_render"
-        )
+        entries = discover_components(tmp_components_root, import_prefix="_hf_test_python_render")
         render_fn = entries[0].render_fn
         result = render_fn(title="Hello")
         assert result == {"title": "Hello", "subtitle": "default"}
@@ -122,9 +118,7 @@ class TestDiscoverPythonComponent:
 class TestDiscoverRoutes:
     def test_routes_py_registers_router(self, tmp_components_root):
         _make_with_routes(tmp_components_root, "picker")
-        entries = discover_components(
-            tmp_components_root, import_prefix="_hf_test_routes"
-        )
+        entries = discover_components(tmp_components_root, import_prefix="_hf_test_routes")
         assert len(entries) == 1
         e = entries[0]
         assert e.has_endpoint is True
@@ -141,42 +135,30 @@ class TestDiscoveryWarnings:
         assert entries == []
         assert any("missing template.html" in rec.message for rec in caplog.records)
 
-    def test_component_py_without_component_subclass_warns(
-        self, tmp_components_root, caplog
-    ):
+    def test_component_py_without_component_subclass_warns(self, tmp_components_root, caplog):
         comp = tmp_components_root / "oops"
         comp.mkdir()
         (comp / "template.html").write_text("<div />")
         (comp / "component.py").write_text("x = 1\n")
         with caplog.at_level("WARNING"):
-            entries = discover_components(
-                tmp_components_root, import_prefix="_hf_test_no_subclass"
-            )
+            entries = discover_components(tmp_components_root, import_prefix="_hf_test_no_subclass")
         assert len(entries) == 1
         assert entries[0].props_cls is None
         assert any(
-            "subclass of hotframe.components.Component" in rec.message
-            for rec in caplog.records
+            "subclass of hotframe.components.Component" in rec.message for rec in caplog.records
         )
 
-    def test_routes_py_without_router_variable_warns(
-        self, tmp_components_root, caplog
-    ):
+    def test_routes_py_without_router_variable_warns(self, tmp_components_root, caplog):
         comp = tmp_components_root / "no_router"
         comp.mkdir()
         (comp / "template.html").write_text("<div />")
         (comp / "routes.py").write_text("# empty\n")
         with caplog.at_level("WARNING"):
-            entries = discover_components(
-                tmp_components_root, import_prefix="_hf_test_no_router"
-            )
+            entries = discover_components(tmp_components_root, import_prefix="_hf_test_no_router")
         assert len(entries) == 1
         assert entries[0].extra_router is None
         assert entries[0].has_endpoint is False
-        assert any(
-            "no module-level `router` attribute" in rec.message
-            for rec in caplog.records
-        )
+        assert any("no module-level `router` attribute" in rec.message for rec in caplog.records)
 
     def test_ignores_private_and_dot_dirs(self, tmp_components_root):
         _make_template_only(tmp_components_root, "good")
@@ -230,9 +212,7 @@ class TestAppDiscovery:
         assert entry.module_id is None
         assert entry.template == "sample/components/widget/template.html"
 
-    def test_discover_app_components_noop_without_components_dir(
-        self, tmp_components_root
-    ):
+    def test_discover_app_components_noop_without_components_dir(self, tmp_components_root):
         apps_dir = tmp_components_root
         (apps_dir / "empty").mkdir()
         registry = ComponentRegistry()

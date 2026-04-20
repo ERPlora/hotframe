@@ -79,16 +79,12 @@ def _render_entry(
         try:
             context = render_fn(**props)
         except ValidationError as exc:
-            logger.warning(
-                "Component %r prop validation failed: %s", entry.name, exc
-            )
+            logger.warning("Component %r prop validation failed: %s", entry.name, exc)
             return Markup(
                 f"<!-- component {entry.name!r}: invalid props ({exc.error_count()} error(s)) -->"
             )
         except TypeError as exc:
-            logger.warning(
-                "Component %r received unexpected kwargs: %s", entry.name, exc
-            )
+            logger.warning("Component %r received unexpected kwargs: %s", entry.name, exc)
             return Markup(f"<!-- component {entry.name!r}: unexpected kwargs -->")
     else:
         # Template-only component — pass the raw kwargs through.
@@ -104,9 +100,7 @@ def _render_entry(
     try:
         template = env.get_template(entry.template)
     except Exception:
-        logger.exception(
-            "Component %r: could not load template %r", entry.name, entry.template
-        )
+        logger.exception("Component %r: could not load template %r", entry.name, entry.template)
         return Markup("")
 
     return Markup(template.render(**context))

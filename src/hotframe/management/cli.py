@@ -1894,9 +1894,7 @@ def _launch_repl(
     code.interact(banner=banner, local=namespace, exitmsg="")
 
 
-def _build_shell_banner(
-    *, version: str, repl_name: str, namespace: dict[str, object]
-) -> str:
+def _build_shell_banner(*, version: str, repl_name: str, namespace: dict[str, object]) -> str:
     """Build the startup banner shown when the shell opens."""
     preferred = ["app", "settings", "db", "events", "hooks", "slots", "runtime", "SlotEntry"]
     available = [name for name in preferred if name in namespace]
