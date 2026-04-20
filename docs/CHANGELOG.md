@@ -7,6 +7,25 @@ All notable changes to `hotframe` are documented here. The format follows [Keep 
 ### Added
 - Work in progress. Not yet released.
 
+## [0.0.6] - 2026-04-20
+
+### Added
+- `views/broadcast`: WebSocket `/ws/stream/{topic:path}` now registered as a real route (was an orphan handler).
+- `templating/extensions`: `timeformat` Jinja filter for HH:MM rendering.
+- `bootstrap`: `CachedStaticFiles` subclass adds `Cache-Control: public, max-age=31536000, immutable` to all `/static/*` responses.
+- `engine/module_runtime.boot_all_active_modules`: per-hub Postgres advisory lock so concurrent uvicorn workers no longer deadlock on `hub_module.manifest` UPDATE. Leader writes DB, followers mount routes in-memory only via `skip_db_writes=True`.
+
+### Fixed
+- SSE endpoints `/stream/{topic}` and `/stream/_mux` now require authentication (were unauthenticated — anyone could open a persistent event stream).
+- `/stream/_mux` validates the `topics` list before constructing `EventSourceResponse` (was hanging 200 on empty topics).
+- `middleware/language` and `auth/csrf`: skip `/static/*` paths when setting cookies. Static assets are now CDN-cacheable (previously every asset response carried `Set-Cookie` for `_lang` + `csrf_token`).
+
+### Tests
+- `tests/test_engine.py::TestBootAdvisoryLock` (6 tests).
+- `tests/test_broadcast.py` (8 tests — SSE auth, WS registration, mux validation).
+
+Total: **200 tests passing**, up from 178.
+
 ## [0.0.5] - 2026-04-19
 
 ### Removed
