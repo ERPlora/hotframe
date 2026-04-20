@@ -98,14 +98,35 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     mount_component_routers(app, components)
     mount_component_static(app, components)
 
-    # 8. Boot: mount every DB-active module's router into the live FastAPI
+    # 8. Boot kernel modules (listed in settings.KERNEL_MODULE_NAMES).
+    # These ship inside the Docker image — they must load BEFORE the
+    # S3-sourced dynamic modules because downstream modules may import
+    # from them (e.g. assistant provides the AI client). Failures are
+    # logged and swallowed — a broken kernel module must not prevent the
+    # rest of the app from starting.
+    from hotframe.config.database import get_session_factory
+    from hotframe.discovery.bootstrap import boot_kernel_modules
+
+    try:
+        session_factory = get_session_factory()
+        async with session_factory() as kernel_session:
+            kernel_count = await boot_kernel_modules(
+                kernel_session,
+                runtime.loader,
+                runtime.registry,
+            )
+            await kernel_session.commit()
+        if kernel_count:
+            logger.info("Boot: loaded %d kernel module(s)", kernel_count)
+    except Exception:
+        logger.exception("Boot: failed to load kernel modules (continuing startup)")
+
+    # 9. Boot: mount every DB-active module's router into the live FastAPI
     # app so ``/m/<module_id>/`` routes exist from the first request after
     # a restart. Without this pass, ``status='active'`` rows persist in the
     # DB but their handlers return 404 until the user clicks Activate again
     # from the marketplace. Failures are logged and swallowed — a broken
     # module must not prevent the rest of the app from starting.
-    from hotframe.config.database import get_session_factory
-
     try:
         session_factory = get_session_factory()
         async with session_factory() as boot_session:
