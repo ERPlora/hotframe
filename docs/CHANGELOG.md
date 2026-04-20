@@ -7,6 +7,11 @@ All notable changes to `hotframe` are documented here. The format follows [Keep 
 ### Added
 - Work in progress. Not yet released.
 
+## [0.0.7] - 2026-04-20
+
+### Fixed
+- bootstrap: now calls `boot_kernel_modules` during lifespan (orphan function was defined but never invoked). Kernel modules listed in `settings.KERNEL_MODULE_NAMES` load from the Docker image BEFORE any S3-sourced dynamic module. Without this fix, `assistant` (the kernel module) was treated as an S3 module, attempted a download that never exists, and persisted `status=error` on every boot.
+
 ## [0.0.6] - 2026-04-20
 
 ### Added
