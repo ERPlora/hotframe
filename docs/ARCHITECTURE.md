@@ -64,7 +64,7 @@ The immutable core framework. Once stable, it does not change. Contains no busin
 - `bootstrap.py` — `create_app(settings)`: builds the FastAPI app, wires middleware, discovers apps, starts lifespan
 - `apps/` — `AppConfig`, `ModuleConfig`, registry, service facade
 - `engine/` — `ModuleRuntime`, `HotMountPipeline`, `ImportManager`, `ModuleStateDB`
-- `discovery/` — auto-scanner for `apps/*/routes.py`, `apps/*/api.py`, kernel modules
+- `discovery/` — auto-scanner for `apps/*/routes.py`, `apps/*/api.py`
 - `middleware/` — 14 middleware classes + stack builder
 - `templating/` — Jinja2 engine with dynamic loader, HTMX helpers, Alpine helpers, slots, frame extension, icons
 - `components/` — `ComponentRegistry`, `Component` (Pydantic), Jinja2 `render_component` global + `{% component %}` tag, discovery for `apps/<app>/components/` and `modules/<id>/components/`, per-component router and static mounting
@@ -178,7 +178,7 @@ src/hotframe/
   config/              <- HotframeSettings (Pydantic), DB engine factory, paths
   db/                  <- singletons, encrypted types (Fernet), protocols (ISession etc.)
   dev/                 <- autoreload watcher (ModuleWatcher)
-  discovery/           <- app/module scanner, kernel module bootstrap
+  discovery/           <- app/module scanner
   engine/              <- ModuleRuntime, HotMountPipeline, ImportManager,
                           ModuleStateDB, S3ModuleSource, MarketplaceClient,
                           DependencyManager
@@ -1028,7 +1028,7 @@ hf startproject <name>              # create project scaffold (use . for current
 hf startapp <name>                  # create app scaffold in apps/
 hf startmodule <name>               # create module scaffold in modules/
 hf startmodule <name> --api-only    # API-only module (no views/templates)
-hf startmodule <name> --system      # system/kernel module (no hub isolation)
+hf startmodule <name> --system      # system module (is_system=True, cannot be uninstalled)
 
 # Module management
 hf modules list                     # show all modules and their status

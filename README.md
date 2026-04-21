@@ -34,7 +34,6 @@ hf runserver
 ```
 
 ```
-INFO     hotframe.core - Loading kernel modules...
 INFO     hotframe.modules - Mounted: core, auth, admin (3 modules)
 INFO     hotframe.server - Uvicorn running on http://127.0.0.1:8000
 INFO     hotframe.server - Press CTRL+C to quit
@@ -142,7 +141,7 @@ async def post_list(request: Request, db: DbSession):
 
 hotframe is organized in three layers:
 
-**Runtime layer** — the framework kernel. Boots FastAPI, wires middleware, initializes the DB engine, and exposes the public API (`@htmx_view`, `router`, `settings`, `EventBus`, `HookRegistry`).
+**Runtime layer** — the framework core. Boots FastAPI, wires middleware, initializes the DB engine, and exposes the public API (`@htmx_view`, `router`, `settings`, `EventBus`, `HookRegistry`).
 
 **Module layer** — each module is a Python package with a `ModuleConfig` subclass, its own models, views, templates, migrations, and static assets. The module engine resolves dependency order, mounts routes and Alembic migration contexts, and registers hook namespaces. Modules can be installed, uninstalled, enabled, and disabled at runtime via the admin API without touching the running process.
 

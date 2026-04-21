@@ -8,7 +8,7 @@ running FastAPI application:
 2. ``importlib.import_module`` the package
 3. Discover ``routes.py`` (HTMX views) and ``api.py`` (REST API)
 4. Mount routers on the FastAPI app
-5. Discover ``events.py``, ``hooks.py``, ``slots.py`` — register with kernel
+5. Discover ``events.py``, ``hooks.py``, ``slots.py`` — register with core registries
 6. Discover middleware class from manifest
 7. Bust OpenAPI schema cache
 
@@ -83,7 +83,7 @@ class ModuleLoader:
         # rollback branch both call ``_drop_module_metadata`` so reinstall
         # never raises ``Table 'X' is already defined for this MetaData
         # instance``.
-        self._module_metadata: dict[str, tuple[list[type], list]] = {}
+        self._module_metadata: dict[str, tuple[list[type[Any]], list]] = {}
 
     # ------------------------------------------------------------------
     # Load

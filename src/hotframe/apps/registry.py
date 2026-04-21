@@ -219,7 +219,7 @@ class AppRegistry:
 
     Key difference from ModuleRegistry:
         - Stores AppConfig instances (not manifests + routers separately).
-        - Allows both static apps (is_kernel=True, boot-time) and
+        - Allows both static apps (is_builtin=True, boot-time) and
           dynamic modules (ModuleConfig subclasses).
         - Indexed by config.name.
 
@@ -255,17 +255,17 @@ class AppRegistry:
         """Snapshot of registered configs."""
         return list(self._apps.values())
 
-    def by_kind(self, *, kernel: bool | None = None) -> list[AppConfig]:
+    def by_kind(self, *, builtin: bool | None = None) -> list[AppConfig]:
         """
         Filter by kind.
-          kernel=True  → is_kernel core apps
-          kernel=False → dynamic modules (is_kernel=False)
-          kernel=None  → all
+          builtin=True  → is_builtin core apps
+          builtin=False → dynamic modules (is_builtin=False)
+          builtin=None  → all
         """
         items = self._apps.values()
-        if kernel is None:
+        if builtin is None:
             return list(items)
-        return [c for c in items if c.is_kernel is kernel]
+        return [c for c in items if c.is_builtin is builtin]
 
     def __contains__(self, name: str) -> bool:
         return name in self._apps

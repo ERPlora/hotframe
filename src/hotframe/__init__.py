@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """hotframe — Modular Python web framework with hot-mount dynamic modules."""
 
-__version__ = "0.0.9"
+__version__ = "0.1.0"
 
 # ---------------------------------------------------------------------------
 # Lazy imports — only loaded when accessed

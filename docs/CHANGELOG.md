@@ -7,6 +7,14 @@ All notable changes to `hotframe` are documented here. The format follows [Keep 
 ### Added
 - Work in progress. Not yet released.
 
+## [0.1.0] - 2026-04-21
+
+### Changed
+- Renamed `App.is_kernel` to `App.is_builtin` for terminology clarity. "Built-in" precisely describes apps that ship with the host application and cannot be disabled, without the OS-kernel semantic baggage. `AppRegistry.by_kind()` kwarg renamed from `kernel=` to `builtin=` accordingly.
+
+### Removed
+- `boot_kernel_modules` primitive and `KERNEL_MODULE_NAMES` setting. Consumers now rely on the `is_system` flag in their module's `module.py` plus an Alembic migration in the consumer app to seed default modules. Simplifies the framework: all modules are treated equally at runtime.
+
 ## [0.0.8] - 2026-04-20
 
 ### Added

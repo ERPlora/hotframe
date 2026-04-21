@@ -227,7 +227,7 @@ class ModuleRuntime:
         # 2. Query active modules
         active_modules = await self.state.get_active_modules(session, hub_id=hub_id)
 
-        # Filter out kernel modules (already loaded before boot)
+        # Skip modules already loaded (e.g. via hot-reload).
         active_modules = [m for m in active_modules if not self.registry.is_loaded(m.module_id)]
 
         if not active_modules:
@@ -539,7 +539,7 @@ class ModuleRuntime:
 
         Args:
             session: Async SQLAlchemy session (must be flushed/committed by caller).
-            hub_id: Tenant UUID; pass ``None`` for hub-less (kernel) installs.
+            hub_id: Tenant UUID; pass ``None`` for hub-less (global) installs.
             module_id: Module identifier as it appears in the catalog or filesystem.
             version: Specific version to install; resolved from marketplace when omitted.
             checksum: Expected SHA-256 of the archive for integrity verification.
@@ -831,6 +831,10 @@ class ModuleRuntime:
 
         # 5. S3 fallback (legacy)
         if self.s3 is not None:
+            if not version:
+                raise ValueError(
+                    f"Cannot download {module_id} from S3: explicit version required",
+                )
             cache_path = await self.s3.download(module_id, version, checksum)
             tmp_path = target_path.with_suffix(".tmp")
             if tmp_path.exists():
@@ -1039,7 +1043,7 @@ class ModuleRuntime:
                         )
                 if hub_id is not None:
                     try:
-                        await state.delete(session, hub_id, module_id)
+                        await state.delete(session, module_id, hub_id=hub_id)
                     except Exception as db_err:
                         logger.error(
                             "Rollback: failed to delete DB row for %s: %s",
@@ -1864,9 +1868,16 @@ class ModuleRuntime:
             )
 
         if to_download:
-            logger.info("Downloading %d modules from S3", len(to_download))
-            # Downloads to /tmp/modules/ (S3 cache)
-            downloaded = await self.s3.download_many(to_download)
+            if self.s3 is None:
+                logger.warning(
+                    "Skipping S3 download of %d modules — no S3 source configured",
+                    len(to_download),
+                )
+                downloaded = {}
+            else:
+                logger.info("Downloading %d modules from S3", len(to_download))
+                # Downloads to /tmp/modules/ (S3 cache)
+                downloaded = await self.s3.download_many(to_download)
             for module_id, cache_path in downloaded.items():
                 target_path = modules_dir / module_id
                 tmp_path = target_path.with_suffix(".tmp")
@@ -1882,12 +1893,16 @@ class ModuleRuntime:
         return result
 
 
-def _get_module_version_model() -> type | None:
+def _get_module_version_model() -> type[Any] | None:
     """
     Resolve the module version catalog model from settings.
 
     Returns the model class if ``settings.MODULE_VERSION_MODEL`` is set,
     otherwise returns ``None`` (catalog version resolution is skipped).
+
+    Returns ``type[Any]`` for the same reason :func:`_get_module_model`
+    does — the swappable model exposes SQLAlchemy column descriptors that
+    cannot be statically typed without losing the descriptor magic.
     """
     import importlib
 

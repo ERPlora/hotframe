@@ -199,7 +199,8 @@ class AppConfig:
         role_permissions: dict[role_name, list[permission_code | "*"]]
         menu: dict with ``label``, ``icon``, ``order`` (optional)
         navigation: list of dicts (optional)
-        is_kernel: True if this app is a system app that cannot be disabled
+        is_builtin: True if this app ships with the host application and cannot be disabled.
+            Built-in apps are part of the application's core surface, not user-installable plugins.
 
     Subclass methods:
         async def ready(self) -> None:
@@ -229,7 +230,7 @@ class AppConfig:
     role_permissions: dict[str, list[str]] = {}
     menu: dict | None = None
     navigation: list[dict] = []
-    is_kernel: bool = False
+    is_builtin: bool = False
 
     # Abstract/base subclasses (like ModuleConfig) set this to True to
     # opt out of the required-name check. Concrete subclasses inherit

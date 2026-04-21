@@ -202,7 +202,6 @@ def startproject(name: str) -> None:
             # -----------------------------------------------------------------
             # Modules
             # -----------------------------------------------------------------
-            # KERNEL_MODULE_NAMES: list[str] = []
             # MODULE_MARKETPLACE_URL: str = ""
             # MODULE_STATE_MODEL: str = ""
 
@@ -904,7 +903,11 @@ def startapp(name: str) -> None:
 def startmodule(
     name: str,
     api_only: bool = typer.Option(False, "--api-only", help="API only, no HTMX views"),
-    system: bool = typer.Option(False, "--system", help="System module, no views or API"),
+    system: bool = typer.Option(
+        False,
+        "--system",
+        help="Mark the module as a system module (is_system=True, cannot be uninstalled)",
+    ),
 ) -> None:
     """Create a new dynamic module inside modules/.
 

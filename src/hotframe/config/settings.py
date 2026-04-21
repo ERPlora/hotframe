@@ -162,9 +162,6 @@ class HotframeSettings(BaseSettings):
     AUTH_LOGIN_URL: str = "/login"
     AUTH_UNAUTHORIZED_URL: str = "/unauthorized"
 
-    # --- Kernel modules ---
-    KERNEL_MODULE_NAMES: list[str] = []
-
     # --- App title ---
     APP_TITLE: str = "Hotframe App"
 
