@@ -24,7 +24,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 try:
-    import asyncpg
+    import asyncpg  # type: ignore[import-not-found]
 except ImportError:
     asyncpg = None  # type: ignore[assignment]
 

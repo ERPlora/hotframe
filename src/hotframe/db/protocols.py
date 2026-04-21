@@ -17,6 +17,7 @@ Usage::
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any, Protocol, Self
 from uuid import UUID
@@ -83,10 +84,10 @@ class IRepository[T](Protocol):
         order_by: Any | None = None,
         limit: int = 50,
         offset: int = 0,
-        options: list[Any] | None = None,
+        options: Sequence[Any] | None = None,
         **filters: Any,
     ) -> dict[str, Any]: ...
-    async def get(self, id: UUID, *, options: list[Any] | None = None) -> T | None: ...
+    async def get(self, id: UUID, *, options: Sequence[Any] | None = None) -> T | None: ...
     async def create(self, **kwargs: Any) -> T: ...
     async def update(self, id: UUID, **kwargs: Any) -> T | None: ...
     async def delete(self, id: UUID) -> bool: ...

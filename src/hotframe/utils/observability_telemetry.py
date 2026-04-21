@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Any
 
 from opentelemetry import trace
@@ -69,7 +70,7 @@ def setup_telemetry(
     # Choose exporter
     if otlp_endpoint:
         try:
-            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (  # type: ignore[import-not-found]
                 OTLPSpanExporter,
             )
 
@@ -117,7 +118,7 @@ def _setup_metrics_provider(
 
     if otlp_endpoint:
         try:
-            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
+            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (  # type: ignore[import-not-found]
                 OTLPMetricExporter,
             )
 
@@ -143,7 +144,9 @@ def _setup_metrics_provider(
 def _auto_instrument_fastapi() -> None:
     """Auto-instrument FastAPI if the instrumentation package is available."""
     try:
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        from opentelemetry.instrumentation.fastapi import (
+            FastAPIInstrumentor,  # type: ignore[import-not-found]
+        )
 
         # BaseInstrumentor.instrument is an instance method — call it on
         # an instance, not on the class itself.
@@ -156,7 +159,9 @@ def _auto_instrument_fastapi() -> None:
 def _auto_instrument_sqlalchemy() -> None:
     """Auto-instrument SQLAlchemy if the instrumentation package is available."""
     try:
-        from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+        from opentelemetry.instrumentation.sqlalchemy import (
+            SQLAlchemyInstrumentor,  # type: ignore[import-not-found]
+        )
 
         SQLAlchemyInstrumentor().instrument()
         logger.debug("SQLAlchemy auto-instrumentation enabled")
@@ -167,7 +172,9 @@ def _auto_instrument_sqlalchemy() -> None:
 def _auto_instrument_httpx() -> None:
     """Auto-instrument httpx if the instrumentation package is available."""
     try:
-        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+        from opentelemetry.instrumentation.httpx import (
+            HTTPXClientInstrumentor,  # type: ignore[import-not-found]
+        )
 
         HTTPXClientInstrumentor().instrument()
         logger.debug("httpx auto-instrumentation enabled")
@@ -193,7 +200,7 @@ def start_span(
     *,
     attributes: dict[str, Any] | None = None,
     kind: trace.SpanKind = trace.SpanKind.INTERNAL,
-) -> Span:
+) -> AbstractContextManager[Span]:
     """
     Start a new span as a context manager.
 
@@ -211,7 +218,7 @@ def start_span(
     )
 
 
-def create_event_span(event_name: str) -> Span:
+def create_event_span(event_name: str) -> AbstractContextManager[Span]:
     """Create a span for an event emission."""
     return start_span(
         f"event.emit:{event_name}",
@@ -222,7 +229,7 @@ def create_event_span(event_name: str) -> Span:
     )
 
 
-def create_hook_span(hook_name: str, hook_type: str = "action") -> Span:
+def create_hook_span(hook_name: str, hook_type: str = "action") -> AbstractContextManager[Span]:
     """Create a span for a hook execution."""
     return start_span(
         f"hook.{hook_type}:{hook_name}",
@@ -233,7 +240,7 @@ def create_hook_span(hook_name: str, hook_type: str = "action") -> Span:
     )
 
 
-def create_module_span(operation: str, module_id: str) -> Span:
+def create_module_span(operation: str, module_id: str) -> AbstractContextManager[Span]:
     """Create a span for a module operation (install, activate, etc.)."""
     return start_span(
         f"module.{operation}:{module_id}",

@@ -95,7 +95,7 @@ def install_component_context_tracker(env: Environment) -> None:
     if getattr(original_context_class, "_hotframe_patched", False):
         return
 
-    class _TrackingContext(original_context_class):
+    class _TrackingContext(original_context_class):  # type: ignore[valid-type, misc]
         _hotframe_patched = True
 
         def __init__(self, *args, **kwargs):
@@ -136,7 +136,7 @@ class ComponentExtension(Extension):
                 break
 
         # Body between {% component %} and {% endcomponent %}.
-        body = parser.parse_statements(["name:endcomponent"], drop_needle=True)
+        body = parser.parse_statements(("name:endcomponent",), drop_needle=True)
 
         call = self.call_method("_render_component", [name_expr], kwargs)
         return nodes.CallBlock(call, [], [], body).set_lineno(lineno)
@@ -168,7 +168,7 @@ class ComponentExtension(Extension):
             logger.warning("{%% component %%} used before ComponentRegistry was bound to the env")
             return Markup("")
 
-        entry = registry.get(__component_name__)
+        entry = registry.get(__component_name__)  # type: ignore[attr-defined]
         if entry is None:
             logger.warning(
                 "Unknown component %r (via {%% component %%} tag)",

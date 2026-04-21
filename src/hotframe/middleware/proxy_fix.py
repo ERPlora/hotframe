@@ -8,7 +8,8 @@ Configured via ``settings.PROXY_*`` fields.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import MutableMapping
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Receive, Scope, Send
@@ -68,7 +69,7 @@ class ProxyFixMiddleware:
         response_started: dict = {}
         body_chunks: list[bytes] = []
 
-        async def _buffering_send(message: dict) -> None:
+        async def _buffering_send(message: MutableMapping[str, Any]) -> None:
             if message["type"] == "http.response.start":
                 headers_list = [
                     (k, v) for k, v in message.get("headers", []) if k.lower() != b"content-length"

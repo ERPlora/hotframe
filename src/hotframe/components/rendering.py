@@ -14,7 +14,7 @@ Registered as ``render_component`` on the Jinja2 environment by
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from jinja2 import pass_context
 from markupsafe import Markup
@@ -52,7 +52,11 @@ def _registry_from_context(ctx: Context) -> ComponentRegistry | None:
             "render_component called before ComponentRegistry was bound to "
             "the Jinja2 environment. Bootstrap injects it at startup."
         )
-    return registry
+        return None
+    # Bootstrap binds the actual ComponentRegistry instance — narrow ``object``
+    # for callers without paying the cost of an isinstance check on the hot
+    # path. A wrong type here is a bootstrap bug, not a runtime concern.
+    return registry  # type: ignore[return-value]
 
 
 def _framework_slice(ctx: Context) -> dict:
@@ -75,6 +79,7 @@ def _render_entry(
     callers), and renders the entry's template.
     """
     render_fn = entry.render_fn
+    context: dict[str, Any]
     if render_fn is not None:
         try:
             context = render_fn(**props)

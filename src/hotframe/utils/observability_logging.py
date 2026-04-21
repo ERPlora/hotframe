@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import MutableMapping
 from typing import Any
 
 import structlog
@@ -22,8 +23,8 @@ from hotframe.utils.observability_context import request_context
 def _add_request_context(
     logger: Any,
     method_name: str,
-    event_dict: dict[str, Any],
-) -> dict[str, Any]:
+    event_dict: MutableMapping[str, Any],
+) -> MutableMapping[str, Any]:
     """Structlog processor: inject request-scoped context from contextvars."""
     ctx = request_context.get()
     if ctx.request_id:
@@ -42,8 +43,8 @@ def _add_request_context(
 def _add_caller_info(
     logger: Any,
     method_name: str,
-    event_dict: dict[str, Any],
-) -> dict[str, Any]:
+    event_dict: MutableMapping[str, Any],
+) -> MutableMapping[str, Any]:
     """Structlog processor: add caller filename and line number."""
     # structlog's CallsiteParameterAdder handles this more robustly,
     # but we configure it in the processor chain instead.

@@ -59,7 +59,7 @@ def _collect_template_dirs(modules_dir: Path | None) -> list[str]:
             if tpl_dir.exists():
                 dirs.append(str(tpl_dir))
 
-    # Modules directory — contains both kernel (is_system=True) and dynamic
+    # Modules directory — contains both bundled (is_system=True) and dynamic
     # modules downloaded from S3.
     if modules_dir and modules_dir.exists():
         for mod_dir in sorted(modules_dir.iterdir()):
@@ -141,7 +141,10 @@ def create_template_engine(modules_dir: Path | None = None) -> Jinja2Templates:
     # language for each request.
     from hotframe.middleware.i18n_support import get_translations
 
-    env.install_gettext_translations(get_translations())
+    # ``install_gettext_translations`` is provided by the ``jinja2.ext.i18n``
+    # extension we load via ``extensions=[...]`` above. Mypy can't see it on
+    # the bare ``Environment`` class.
+    env.install_gettext_translations(get_translations())  # type: ignore[attr-defined]
 
     templates = _HotframeTemplates(env=env)
 

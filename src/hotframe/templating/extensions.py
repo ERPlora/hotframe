@@ -188,7 +188,7 @@ def currency_filter(
         language = get_current_language()
 
     try:
-        from babel.numbers import format_currency
+        from babel.numbers import format_currency  # type: ignore[import-not-found]
 
         return format_currency(float(value), currency_code, locale=language)  # type: ignore[arg-type]
     except (ImportError, Exception):
@@ -220,7 +220,7 @@ def dateformat_filter(value: object, fmt: str = "d/m/Y H:i") -> str:
         py_fmt += _PHP_TO_STRFTIME.get(ch, ch)
 
     try:
-        return value.strftime(py_fmt)  # type: ignore[union-attr]
+        return value.strftime(py_fmt)  # type: ignore[attr-defined]
     except (AttributeError, ValueError):
         return str(value)
 
@@ -252,7 +252,7 @@ def timeformat_filter(value: object, fmt: str = "H:i") -> str:
         py_fmt += _PHP_TO_STRFTIME.get(ch, ch)
 
     try:
-        result = value.strftime(py_fmt)  # type: ignore[union-attr]
+        result = value.strftime(py_fmt)  # type: ignore[attr-defined]
     except (AttributeError, ValueError):
         return str(value)
 

@@ -184,7 +184,7 @@ class MediaStorage:
 
     async def _s3_put(self, key: str, content: bytes) -> None:
         try:
-            import aioboto3
+            import aioboto3  # type: ignore[import-not-found]
         except ImportError:
             raise ImportError(
                 "aioboto3 is required for S3 media storage. Install it with: pip install aioboto3"

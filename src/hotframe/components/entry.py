@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from fastapi import APIRouter
@@ -33,8 +33,11 @@ class ComponentEntry:
         template: Jinja2 template path (relative to the loader's search paths).
         has_endpoint: True if the component exposes an HTTP endpoint via
             ``extra_router`` (for HTMX lazy-load or action handlers).
-        render_fn: Optional callable that produces the rendered HTML string.
-            When ``None``, the framework renders ``template`` directly.
+        render_fn: Optional callable that returns the template context
+            (a ``dict[str, Any]``) given the validated props. The framework
+            then renders ``template`` with that context plus the framework
+            slice. When ``None``, the framework renders ``template`` with
+            the raw kwargs as context.
         extra_router: Optional :class:`fastapi.APIRouter` to mount alongside
             the component. Mounting is handled by the components mounting
             subsystem.
@@ -54,7 +57,7 @@ class ComponentEntry:
     name: str
     template: str
     has_endpoint: bool = False
-    render_fn: Callable[..., str] | None = None
+    render_fn: Callable[..., dict[str, Any]] | None = None
     extra_router: APIRouter | None = None
     module_id: str | None = None
     static_dir: str | None = None

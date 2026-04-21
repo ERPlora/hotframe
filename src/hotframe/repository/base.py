@@ -14,6 +14,7 @@ Usage::
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
@@ -61,7 +62,7 @@ class BaseRepository[T]:
         order_by: str | Any | None = None,
         limit: int = 50,
         offset: int = 0,
-        options: list[Any] | None = None,
+        options: Sequence[Any] | None = None,
         **filters: Any,
     ) -> dict[str, Any]:
         """
@@ -100,7 +101,7 @@ class BaseRepository[T]:
         items = await query.offset(offset).limit(limit).all()
         return {"items": items, "total": total}
 
-    async def get(self, id: UUID, *, options: list[Any] | None = None) -> T | None:
+    async def get(self, id: UUID, *, options: Sequence[Any] | None = None) -> T | None:
         """Get a single record by primary key."""
         query = self.q()
         if options:
@@ -109,7 +110,10 @@ class BaseRepository[T]:
 
     async def create(self, **kwargs: Any) -> T:
         """Create a new record."""
-        instance = self.model(hub_id=self.hub_id, **kwargs)
+        # ``self.model`` is a SQLAlchemy declarative class — its ``__init__``
+        # is dynamic and accepts column kwargs. Mypy sees the abstract
+        # ``type[T]`` only.
+        instance = self.model(hub_id=self.hub_id, **kwargs)  # type: ignore[call-arg]
         self.db.add(instance)
         await self.db.flush()
         return instance

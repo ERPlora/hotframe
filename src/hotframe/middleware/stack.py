@@ -74,7 +74,10 @@ def build_middleware_stack(app: FastAPI, settings: HotframeSettings) -> None:
         try:
             cls = _import_class(dotted_path)
             kwargs = _get_middleware_kwargs(cls, settings)
-            app.add_middleware(cls, **kwargs)
+            # Settings give us middleware as a dotted import path; the resolved
+            # ``cls`` is dynamic and Starlette's _MiddlewareFactory typing
+            # cannot describe it. Runtime validation lives in add_middleware.
+            app.add_middleware(cls, **kwargs)  # type: ignore[arg-type]
         except Exception:
             logger.exception("Failed to add middleware: %s", dotted_path)
             raise

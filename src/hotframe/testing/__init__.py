@@ -47,7 +47,7 @@ def create_test_app(settings: Any | None = None, **overrides: Any) -> FastAPI:
     from hotframe.config.settings import HotframeSettings, set_settings
 
     if settings is None:
-        test_defaults = {
+        test_defaults: dict[str, Any] = {
             "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
             "DEBUG": True,
             "DEPLOYMENT_MODE": "local",

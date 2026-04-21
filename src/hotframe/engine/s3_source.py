@@ -23,7 +23,7 @@ from io import BytesIO
 from pathlib import Path
 
 try:
-    import aioboto3
+    import aioboto3  # type: ignore[import-not-found]
 except ImportError:
     aioboto3 = None  # type: ignore[assignment]
 

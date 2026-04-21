@@ -112,6 +112,6 @@ def destroy_session(request: Request) -> None:
     Preserves the session dict reference but removes all keys,
     so the session middleware will delete the cookie on response.
     """
-    session: dict = getattr(request.state, "session", None)
+    session: dict | None = getattr(request.state, "session", None)
     if session is not None:
         session.clear()

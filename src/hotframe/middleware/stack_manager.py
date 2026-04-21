@@ -162,7 +162,10 @@ class MiddlewareStackManager:
         """
 
         async def compose() -> None:
-            self._app.add_middleware(middleware_class, **options)
+            # ``middleware_class`` is the dynamic ASGI middleware class users
+            # pass in. Starlette's typing wants a precise factory; runtime
+            # validation happens inside ``add_middleware`` itself.
+            self._app.add_middleware(middleware_class, **options)  # type: ignore[arg-type]
 
         await self.rebuild(compose)
 

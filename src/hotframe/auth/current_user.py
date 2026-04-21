@@ -30,10 +30,16 @@ def _get_session_factory():
     return get_session_factory()
 
 
-def _resolve_user_model() -> type | None:
+def _resolve_user_model() -> type[Any] | None:
     """Import the user model class from settings.AUTH_USER_MODEL.
 
     Returns None if AUTH_USER_MODEL is not configured.
+
+    Returns ``type[Any]`` because the swappable user class is a SQLAlchemy
+    declarative whose columns (``id``, ``is_active``) are descriptors that
+    cannot be statically typed without losing the descriptor magic. The
+    runtime contract — that the model exposes id/is_active — is documented
+    and enforced by the queries that consume it.
     """
     from hotframe.config.settings import get_settings
 

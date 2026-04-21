@@ -74,15 +74,19 @@ class ModuleService:
         *,
         search_fields: list[str] | None = None,
         default_order: str = "created_at",
-    ) -> IRepository:
+    ) -> IRepository[Any]:
         """Return a hub-scoped BaseRepository for the given model."""
-        return BaseRepository(
+        # ``model`` is a runtime-resolved SQLAlchemy class — we erase the
+        # generic parameter at this boundary so callers get the Protocol
+        # they depend on (``IRepository[Any]``) without a phantom ``Never``.
+        repo: BaseRepository[Any] = BaseRepository(
             model,
             self.db,
             self.hub_id,
             search_fields=search_fields,
             default_order=default_order,
         )
+        return repo
 
     @staticmethod
     def serialize(obj: Any, **kwargs: Any) -> dict:
@@ -93,6 +97,109 @@ class ModuleService:
     def serialize_list(items: list, **kwargs: Any) -> list[dict]:
         """Serialize a list of ORM objects to a list of plain dicts."""
         return serialize_list(items, **kwargs)
+
+    # ------------------------------------------------------------------
+    # Convenience helpers
+    #
+    # These shrink the boilerplate that every module's services.py
+    # repeats: response shape (``{"error": ...}`` / ``{... , "ok": True}``),
+    # parsing user-supplied strings into typed values, and the
+    # ``get-or-404`` lookup pattern. They are opt-in — existing services
+    # that don't use them keep working unchanged.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def success(**fields: Any) -> dict[str, Any]:
+        """Build a success response. Always includes ``"ok": True``.
+
+        Use this instead of hand-built ``{"id": ..., "created": True}``
+        dicts so callers can rely on a consistent shape.
+        """
+        return {"ok": True, **fields}
+
+    @staticmethod
+    def error(message: str, *, code: str = "", **fields: Any) -> dict[str, Any]:
+        """Build an error response. ``message`` is human-readable; ``code``
+        is an optional machine-readable identifier for clients that branch
+        on it (e.g. ``"not_found"``, ``"already_exists"``).
+        """
+        body: dict[str, Any] = {"ok": False, "error": message}
+        if code:
+            body["code"] = code
+        body.update(fields)
+        return body
+
+    @staticmethod
+    def parse_uuid(value: str | UUID | None) -> UUID | None:
+        """Parse a string or UUID into a UUID. Returns None for empty/None.
+
+        Raises ``ValueError`` only for malformed non-empty strings — callers
+        that want a soft error should catch it and return :meth:`error`.
+        """
+        if value is None or value == "":
+            return None
+        if isinstance(value, UUID):
+            return value
+        return UUID(value)
+
+    @staticmethod
+    def parse_date(value: str | None, *, fmt: str = "%Y-%m-%d") -> Any:
+        """Parse an ISO date string (default ``YYYY-MM-DD``). Empty → None."""
+        from datetime import datetime as _datetime
+
+        if not value:
+            return None
+        return _datetime.strptime(value, fmt).date()
+
+    @staticmethod
+    def parse_decimal(value: str | None) -> Any:
+        """Parse a string into ``Decimal``. Empty → None."""
+        from decimal import Decimal as _Decimal
+
+        if value is None or value == "":
+            return None
+        return _Decimal(value)
+
+    async def get_or_none(self, model: type, id_value: str | UUID | None) -> Any:
+        """Lookup by primary key (UUID), returning the row or ``None``.
+
+        Accepts the id as either a string or a UUID; empty / ``None``
+        returns ``None`` without hitting the database. Use
+        :meth:`get_or_error` when you want the standard not-found dict.
+        """
+        uid = self.parse_uuid(id_value)
+        if uid is None:
+            return None
+        return await self.q(model).get(uid)
+
+    async def get_or_error(
+        self,
+        model: type,
+        id_value: str | UUID | None,
+        *,
+        not_found_message: str = "Not found",
+        code: str = "not_found",
+    ) -> tuple[Any, dict[str, Any] | None]:
+        """Convenience wrapper around :meth:`get_or_none`.
+
+        Returns ``(row, None)`` on success or ``(None, error_dict)`` on
+        miss. The two-element tuple lets callers do ``row, err = ...; if
+        err: return err`` instead of nested if/else.
+        """
+        row = await self.get_or_none(model, id_value)
+        if row is None:
+            return None, self.error(not_found_message, code=code)
+        return row, None
+
+    def atomic(self) -> Any:
+        """Shortcut for ``hotframe.orm.transactions.atomic(self.db)``.
+
+        Lets services write ``async with self.atomic() as session:`` instead
+        of importing ``atomic`` and threading ``self.db`` everywhere.
+        """
+        from hotframe.orm.transactions import atomic as _atomic
+
+        return _atomic(self.db)
 
 
 @dataclass

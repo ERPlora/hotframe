@@ -263,10 +263,10 @@ class AsyncEventBus:
                         if once_to_remove:
                             async with self._lock:
                                 for p, e in once_to_remove:
-                                    entries = self._handlers.get(p)
-                                    if entries and e in entries:
-                                        entries.remove(e)
-                                    if entries is not None and not entries:
+                                    cleanup_entries = self._handlers.get(p)
+                                    if cleanup_entries and e in cleanup_entries:
+                                        cleanup_entries.remove(e)
+                                    if cleanup_entries is not None and not cleanup_entries:
                                         del self._handlers[p]
                         span.set_attribute("event.error_count", len(errors))
                         raise
@@ -287,10 +287,10 @@ class AsyncEventBus:
             if once_to_remove:
                 async with self._lock:
                     for pattern, entry in once_to_remove:
-                        entries = self._handlers.get(pattern)
-                        if entries and entry in entries:
-                            entries.remove(entry)
-                        if entries is not None and not entries:
+                        cleanup_entries = self._handlers.get(pattern)
+                        if cleanup_entries and entry in cleanup_entries:
+                            cleanup_entries.remove(entry)
+                        if cleanup_entries is not None and not cleanup_entries:
                             del self._handlers[pattern]
 
             if errors:
@@ -443,10 +443,10 @@ class AsyncEventBus:
             if once_to_remove:
                 async with self._lock:
                     for pattern, entry in once_to_remove:
-                        entries = self._handlers.get(pattern)
-                        if entries and entry in entries:
-                            entries.remove(entry)
-                        if entries is not None and not entries:
+                        cleanup_entries = self._handlers.get(pattern)
+                        if cleanup_entries and entry in cleanup_entries:
+                            cleanup_entries.remove(entry)
+                        if cleanup_entries is not None and not cleanup_entries:
                             del self._handlers[pattern]
 
             if errors:

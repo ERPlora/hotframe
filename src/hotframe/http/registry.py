@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 from hotframe.http.client import AuthenticatedClient
 from hotframe.http.interceptors import Interceptor, InterceptorBase
@@ -203,8 +204,10 @@ class HttpClientRegistry:
             combined = list(client.interceptors) + self._match_ambient(name)
         if not combined:
             return
-        # Deduplicate by ``name`` — first win — and re-order.
-        seen: set[str] = set()
+        # Deduplicate by ``name`` — first win — and re-order. The dedup key
+        # is either the interceptor's declared ``name`` (str) or, lacking
+        # one, ``id(...)`` (int). Both compare-and-hash safely in a set.
+        seen: set[Any] = set()
         deduped: list[Interceptor] = []
         for interceptor in combined:
             iname = getattr(interceptor, "name", None) or id(interceptor)

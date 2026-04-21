@@ -294,7 +294,9 @@ async def ws_broadcast_handler(websocket: WebSocket, topic: str) -> None:
         return
 
     await websocket.accept()
-    hub = get_broadcast_hub(websocket)  # WebSocket has .app too
+    # WebSocket has .app like Request, so the structural lookup works at
+    # runtime — the typed signature only documents the common case.
+    hub = get_broadcast_hub(websocket)  # type: ignore[arg-type]
     queue = await hub.subscribe(topic)
 
     try:

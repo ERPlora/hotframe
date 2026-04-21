@@ -154,7 +154,7 @@ def htmx_view(
                 if permissions:
                     from hotframe.auth.permissions import has_permission
 
-                    user_perms: list[str] = getattr(
+                    user_perms: list[str] | None = getattr(
                         request.state,
                         "user_permissions",
                         None,

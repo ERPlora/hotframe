@@ -30,7 +30,12 @@ class HubQuery[T]:
     """
 
     def __init__(self, model: type[T], session: ISession, hub_id: UUID) -> None:
-        self._model = model
+        # ``model`` carries SQLAlchemy column descriptors that mypy cannot
+        # see through ``type[T]``. We keep the public ``T`` for the return
+        # types of ``all()``/``first()``/``get()`` but store the class as
+        # ``Any`` internally so column accesses (Model.hub_id, Model.id)
+        # type-check.
+        self._model: Any = model
         self._session = session
         self._hub_id = hub_id
         self._conditions: list[Any] = []
