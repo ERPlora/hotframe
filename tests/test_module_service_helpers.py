@@ -106,7 +106,9 @@ class TestParseDate:
 
     def test_custom_format(self):
         assert ModuleService.parse_date("21/04/2026", fmt="%d/%m/%Y") == date(
-            2026, 4, 21,
+            2026,
+            4,
+            21,
         )
 
 
