@@ -57,11 +57,18 @@ class TestCLI:
 
     def test_shell_help(self):
         """The shell command is registered and exposes its flags."""
+        import re
+
         result = runner.invoke(app, ["shell", "--help"])
         assert result.exit_code == 0
-        assert "--no-startup" in result.output
-        assert "--settings" in result.output
-        assert "--plain" in result.output
+        # Click + Rich wraps long flag names across lines and injects ANSI
+        # color escapes when stdout is forced-color (some CI runners).
+        # Strip both before substring-asserting against the help text.
+        cleaned = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+        cleaned = re.sub(r"\s+", "", cleaned)
+        assert "--no-startup" in cleaned
+        assert "--settings" in cleaned
+        assert "--plain" in cleaned
 
     def test_shell_banner(self):
         """The banner lists the expected variables for --no-startup mode."""

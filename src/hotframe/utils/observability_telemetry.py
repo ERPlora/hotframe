@@ -144,8 +144,8 @@ def _setup_metrics_provider(
 def _auto_instrument_fastapi() -> None:
     """Auto-instrument FastAPI if the instrumentation package is available."""
     try:
-        from opentelemetry.instrumentation.fastapi import (
-            FastAPIInstrumentor,  # type: ignore[import-not-found]
+        from opentelemetry.instrumentation.fastapi import (  # type: ignore[import-not-found]
+            FastAPIInstrumentor,
         )
 
         # BaseInstrumentor.instrument is an instance method — call it on
@@ -159,8 +159,8 @@ def _auto_instrument_fastapi() -> None:
 def _auto_instrument_sqlalchemy() -> None:
     """Auto-instrument SQLAlchemy if the instrumentation package is available."""
     try:
-        from opentelemetry.instrumentation.sqlalchemy import (
-            SQLAlchemyInstrumentor,  # type: ignore[import-not-found]
+        from opentelemetry.instrumentation.sqlalchemy import (  # type: ignore[import-not-found]
+            SQLAlchemyInstrumentor,
         )
 
         SQLAlchemyInstrumentor().instrument()
@@ -172,8 +172,8 @@ def _auto_instrument_sqlalchemy() -> None:
 def _auto_instrument_httpx() -> None:
     """Auto-instrument httpx if the instrumentation package is available."""
     try:
-        from opentelemetry.instrumentation.httpx import (
-            HTTPXClientInstrumentor,  # type: ignore[import-not-found]
+        from opentelemetry.instrumentation.httpx import (  # type: ignore[import-not-found]
+            HTTPXClientInstrumentor,
         )
 
         HTTPXClientInstrumentor().instrument()

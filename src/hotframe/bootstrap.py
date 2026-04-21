@@ -196,11 +196,20 @@ def create_app(settings: HotframeSettings | None = None) -> FastAPI:
         settings.LOG_FORMAT == "console" and settings.is_production
     )
     setup_logging(log_level=settings.LOG_LEVEL, json_output=json_output)
+    # Skip telemetry setup under pytest: the BatchSpanProcessor + console
+    # exporter spawn a background thread that writes to stderr after
+    # pytest closes its capture stream, producing post-run "I/O operation
+    # on closed file" tracebacks that flip CI exit codes despite all
+    # tests passing. Real apps and explicit OTLP endpoints are unaffected.
+    import sys as _sys
+
+    in_pytest = "pytest" in _sys.modules
     try:
-        setup_telemetry(
-            debug=settings.DEBUG,
-            service_name=settings.OTEL_SERVICE_NAME,
-        )
+        if not in_pytest:
+            setup_telemetry(
+                debug=settings.DEBUG,
+                service_name=settings.OTEL_SERVICE_NAME,
+            )
     except Exception as exc:
         logger.warning("Telemetry setup failed (non-fatal): %s", exc)
 
