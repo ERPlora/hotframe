@@ -6,7 +6,7 @@
 
 `hotframe` está en **pre-alpha**: el código vive temporalmente dentro del monorepo ERPlora (`hub-next/runtime/`) y se extraerá a este repo cuando alcance feature freeze. Mientras tanto, aceptamos:
 
-- Feedback sobre la [arquitectura](ARCHITECTURE.md) y el [plan](PLAN.md).
+- Feedback sobre la [arquitectura](ARCHITECTURE.md).
 - Issues con ideas, casos de uso, críticas constructivas.
 
 No aceptamos todavía PRs de código (no hay código que modificar).
@@ -51,4 +51,4 @@ Este proyecto sigue el [Contributor Covenant](CODE_OF_CONDUCT.md). Reportes a he
 
 ## Licencia
 
-Al contribuir aceptas que tu código se publique bajo [Apache 2.0](LICENSE).
+Al contribuir aceptas que tu código se publique bajo [Apache 2.0](https://github.com/ERPlora/hotframe/blob/main/LICENSE).

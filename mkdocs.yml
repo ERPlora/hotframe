@@ -1,0 +1,137 @@
+# Hotframe documentation site — https://erplora.github.io/hotframe/
+#
+# Built with mkdocs + Material theme + mkdocstrings[python] for API
+# reference auto-generated from docstrings in src/hotframe/.
+#
+# Local preview:
+#   pip install -e ".[docs]"
+#   mkdocs serve
+#
+# The CI workflow (.github/workflows/docs.yml) runs `mkdocs build --strict`
+# on push to main and deploys the site to GitHub Pages.
+
+site_name: Hotframe
+site_description: A modular Python web framework with hot-mount dynamic modules (FastAPI + SQLAlchemy + Jinja2 + HTMX + Alpine.js)
+site_author: ERPlora
+site_url: https://erplora.github.io/hotframe/
+
+repo_name: ERPlora/hotframe
+repo_url: https://github.com/ERPlora/hotframe
+edit_uri: edit/main/docs/
+
+# Documentation sources live in docs/. mkdocs resolves paths below
+# relative to this file's directory.
+docs_dir: docs
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+markdown_extensions:
+  # Python-markdown built-ins
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  # pymdown-extensions (ships with mkdocs-material)
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search
+  # mkdocstrings renders Python API pages from docstrings. The `api/`
+  # reference pages under docs/ use ::: hotframe.module.Symbol blocks
+  # to embed the generated docs inline.
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_root_heading: true
+            show_source: true
+            show_signature_annotations: true
+            separate_signature: true
+            line_length: 88
+            merge_init_into_class: true
+            members_order: source
+            filters: ["!^_"]
+
+# Navigation is explicit rather than auto-discovered from filenames so
+# the docs read like a guided tour rather than a dump of markdown files.
+nav:
+  - Home: index.md
+  - Architecture: ARCHITECTURE.md
+  - Guides:
+      - Shell: SHELL.md
+      - Components: COMPONENTS.md
+      - HTTP clients: HTTP_CLIENTS.md
+      - HTTP interceptors: http-interceptors.md
+  - Reference:
+      - Public API: api/public.md
+  - Community:
+      - Contributing: CONTRIBUTING.md
+      - Code of conduct: CODE_OF_CONDUCT.md
+      - Security: SECURITY.md
+      - Changelog: CHANGELOG.md
+
+# `strict: true` is set on the CLI invocation in CI so new warnings
+# become errors before they land on main. Keep strict off here so
+# `mkdocs serve` during development tolerates in-progress drafts.
+strict: false
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/ERPlora/hotframe
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/hotframe/
