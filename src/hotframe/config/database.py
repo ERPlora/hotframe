@@ -37,6 +37,16 @@ def get_engine() -> AsyncEngine:
                 pool_pre_ping=True,
                 pool_timeout=settings.DB_POOL_TIMEOUT,
             )
+            # Transaction-mode poolers (RDS Proxy, PgBouncer, Supavisor,
+            # Cloud SQL Auth Proxy with pool) rotate the backend
+            # connection between transactions, which invalidates any
+            # prepared statement asyncpg caches on the client side.
+            # Opt in via DB_DISABLE_PREPARED_STATEMENTS=true.
+            if settings.DB_DISABLE_PREPARED_STATEMENTS and "asyncpg" in settings.DATABASE_URL:
+                kwargs["connect_args"] = {
+                    "prepared_statement_cache_size": 0,
+                    "statement_cache_size": 0,
+                }
         else:
             # SQLite doesn't support pool_size / max_overflow
             kwargs["connect_args"] = {"check_same_thread": False}
