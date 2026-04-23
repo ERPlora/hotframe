@@ -59,6 +59,13 @@ class HotframeSettings(BaseSettings):
     DB_POOL_RECYCLE: int = 3600
     DB_POOL_TIMEOUT: int = 30
     DB_ECHO: bool = False
+    # When True, disable asyncpg's auto-prepared-statement cache.
+    # Required when DATABASE_URL points at a transaction-mode pooler
+    # (AWS RDS Proxy, PgBouncer, Supavisor, GCP Cloud SQL Auth Proxy
+    # with pool, etc.) — those rotate the backend connection between
+    # transactions, invalidating any prepared statement cached on the
+    # client side. Has no effect on non-asyncpg drivers.
+    DB_DISABLE_PREPARED_STATEMENTS: bool = False
     MAX_REQUEST_BODY: int = 10 * 1024 * 1024  # 10 MB
 
     # --- Security ---
