@@ -163,7 +163,13 @@ class HotframeSettings(BaseSettings):
     SESSION_MAX_AGE: int = 86400 * 30  # 30 days
 
     # --- CSP ---
-    CSP_TRUSTED_TYPES: bool = True
+    # Trusted Types is OFF by default: incompatible with HTMX, Alpine, and
+    # Datastar 1.0, all of which use ``Function()`` / ``insertAdjacentHTML``
+    # patterns that ``require-trusted-types-for 'script'`` blocks. Datastar's
+    # own security docs state that ``unsafe-eval`` is required.
+    # Defense-in-depth still rests on: nonces + CSP, CSRF, Jinja escape,
+    # SameSite=Strict cookies, signed sessions.
+    CSP_TRUSTED_TYPES: bool = False
     CSP_ALLOWED_SOURCES: dict[str, list[str]] = {
         "script": [],
         "style": [],
