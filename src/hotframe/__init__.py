@@ -82,14 +82,9 @@ _LAZY_IMPORTS: dict[str, str] = {
     "HotMountPipeline": "hotframe.engine.pipeline",
     "ImportManager": "hotframe.engine.import_manager",
     "MarketplaceClient": "hotframe.engine.marketplace_client",
-    # Forms
-    "FormRenderer": "hotframe.forms.rendering",
     # Config
     "get_engine": "hotframe.config.database",
     "get_session_factory": "hotframe.config.database",
-    # Storage
-    "MediaStorage": "hotframe.storage.media",
-    "get_media_storage": "hotframe.storage.media",
     # HTTP clients
     "AuthenticatedClient": "hotframe.http",
     "HttpClientRegistry": "hotframe.http",
@@ -110,6 +105,14 @@ _LAZY_IMPORTS: dict[str, str] = {
     "RefreshInterceptor": "hotframe.http",
     "exponential_backoff": "hotframe.http",
     "discover_interceptors": "hotframe.http",
+    # Reactivity (Datastar facade)
+    "reactive": "hotframe.reactivity",
+    "sse_response": "hotframe.reactivity",
+    "SSEResponse": "hotframe.reactivity",
+    "ServerSentEventGenerator": "hotframe.reactivity",
+    "read_signals": "hotframe.reactivity",
+    "ReadSignals": "hotframe.reactivity",
+    "SSE_HEADERS": "hotframe.reactivity",
 }
 
 

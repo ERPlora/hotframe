@@ -29,18 +29,21 @@ def _import_class(dotted_path: str) -> type:
 
 def _get_middleware_kwargs(cls: type, settings: HotframeSettings) -> dict[str, Any]:
     """Return constructor kwargs for known middleware classes based on settings."""
+    from starlette.middleware.sessions import SessionMiddleware
+
     from hotframe.middleware.body_limit import BodyLimitMiddleware
     from hotframe.middleware.csp import CSPMiddleware
     from hotframe.middleware.module_middleware import ModuleMiddlewareManager
     from hotframe.middleware.rate_limit import APIRateLimitMiddleware
-    from hotframe.middleware.session import SessionMiddleware
     from hotframe.middleware.timeout import TimeoutMiddleware
 
     if cls is SessionMiddleware:
         return {
             "secret_key": settings.SECRET_KEY,
             "max_age": settings.SESSION_MAX_AGE,
-            "cookie_name": settings.SESSION_COOKIE_NAME,
+            "session_cookie": settings.SESSION_COOKIE_NAME,
+            "same_site": "strict",
+            "https_only": settings.DEPLOYMENT_MODE != "local",
         }
     if cls is CSPMiddleware:
         return {"enforce": settings.CSP_ENFORCE}

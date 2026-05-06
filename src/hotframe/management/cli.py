@@ -222,7 +222,8 @@ def startproject(name: str) -> None:
             #     "hotframe.middleware.timeout.TimeoutMiddleware",
             #     "hotframe.middleware.error_pages.ErrorPageMiddleware",
             #     "hotframe.middleware.body_limit.BodyLimitMiddleware",
-            #     "hotframe.middleware.request_id.RequestIdMiddleware",
+            #     "asgi_correlation_id.CorrelationIdMiddleware",
+            #     "hotframe.middleware.observability.RequestObservabilityMiddleware",
             #     "hotframe.middleware.rate_limit.APIRateLimitMiddleware",
             #     "hotframe.middleware.module_middleware.ModuleMiddlewareManager",
             #     "hotframe.auth.csrf.CSRFMiddleware",
@@ -230,7 +231,7 @@ def startproject(name: str) -> None:
             #     "hotframe.middleware.htmx.HtmxMiddleware",
             #     "hotframe.middleware.language.LanguageMiddleware",
             #     "hotframe.middleware.csp.CSPMiddleware",
-            #     "hotframe.middleware.session.SessionMiddleware",
+            #     "starlette.middleware.sessions.SessionMiddleware",
             # ]
 
 

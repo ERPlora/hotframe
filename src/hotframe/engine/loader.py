@@ -17,6 +17,7 @@ Unloading reverses all of the above and purges ``sys.modules``.
 
 from __future__ import annotations
 
+import gc
 import importlib
 import logging
 import sys
@@ -525,12 +526,26 @@ class ModuleLoader:
         entry = self.registry.get(module_id)
         if entry is not None and entry.middleware is not None:
             await self.stack_manager.remove_and_rebuild(entry.middleware)
+            # Leak B mitigation (doc 05 §3.5): rebuilding the stack creates
+            # a fresh chain of bound methods; the previous chain's closures
+            # may keep the old middleware instance alive through reference
+            # cycles (BaseHTTPMiddleware -> ASGIApp -> Starlette internals).
+            # An explicit collection right after rebuild gives those cycles
+            # a chance to be reclaimed before the test's RSS measurement.
+            gc.collect()
 
         # 9. Unregister
         self.registry.unregister(module_id)
 
         # 10. Bust OpenAPI cache
         self.app.openapi_schema = None
+
+        # Leak C mitigation (doc 05 §3.5): trigger one more collection now
+        # that ``self.registry`` and ``self._module_metadata`` no longer
+        # hold strong references to the module's classes. Without this,
+        # SQLAlchemy mapper internals can keep the class graph alive
+        # across reinstalls and RSS grows linearly.
+        gc.collect()
 
         logger.info("Unloaded module %s", module_id)
 

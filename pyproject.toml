@@ -60,6 +60,8 @@ dependencies = [
     "opentelemetry-api>=1.20",
     "opentelemetry-sdk>=1.20",
     "aiosqlite>=0.19",
+    "datastar-py>=1.0.0",
+    "asgi-correlation-id>=4.3.4",
 ]
 
 [project.optional-dependencies]

@@ -283,7 +283,7 @@ async def ws_broadcast_handler(websocket: WebSocket, topic: str) -> None:
     (policy violation, application-defined) before ``accept()`` is called.
     """
     from hotframe.auth.auth import SESSION_USER_KEY
-    from hotframe.middleware.session import get_session_data
+    from hotframe.auth.session_helpers import get_session_data
 
     session = get_session_data(websocket)
     if not session.get(SESSION_USER_KEY):

@@ -3,7 +3,6 @@
 from hotframe.middleware.body_limit import BodyLimitMiddleware
 from hotframe.middleware.htmx import HtmxDetails, HtmxMiddleware
 from hotframe.middleware.timeout import TimeoutMiddleware
-from hotframe.middleware.trailing_slash import TrailingSlashMiddleware
 
 
 class TestHtmxDetails:
@@ -24,6 +23,3 @@ class TestMiddlewareImports:
 
     def test_timeout(self):
         assert TimeoutMiddleware is not None
-
-    def test_trailing_slash(self):
-        assert TrailingSlashMiddleware is not None
