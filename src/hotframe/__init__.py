@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """hotframe — Modular Python web framework with hot-mount dynamic modules."""
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 # ---------------------------------------------------------------------------
 # Lazy imports — only loaded when accessed
@@ -42,7 +42,14 @@ _LAZY_IMPORTS: dict[str, str] = {
     "register_event": "hotframe.signals.types",
     # ORM
     "setup_orm_events": "hotframe.orm.events",
-    # Views
+    # Views — reactive (Datastar) decorator + helpers
+    "view": "hotframe.views.responses",
+    "is_reactive_request": "hotframe.views.responses",
+    "reactive_redirect": "hotframe.views.responses",
+    "reactive_refresh": "hotframe.views.responses",
+    "reactive_trigger": "hotframe.views.responses",
+    "reactive_message": "hotframe.views.responses",
+    # Views — legacy HTMX aliases (removed in 0.3)
     "htmx_view": "hotframe.views.responses",
     "is_htmx_request": "hotframe.views.responses",
     "htmx_redirect": "hotframe.views.responses",
@@ -50,8 +57,6 @@ _LAZY_IMPORTS: dict[str, str] = {
     "htmx_trigger": "hotframe.views.responses",
     "add_message": "hotframe.views.responses",
     "sse_stream": "hotframe.views.responses",
-    "TurboStream": "hotframe.views.streams",
-    "StreamResponse": "hotframe.views.streams",
     "BroadcastHub": "hotframe.views.broadcast",
     # Templating
     "SlotRegistry": "hotframe.templating.slots",
@@ -82,14 +87,9 @@ _LAZY_IMPORTS: dict[str, str] = {
     "HotMountPipeline": "hotframe.engine.pipeline",
     "ImportManager": "hotframe.engine.import_manager",
     "MarketplaceClient": "hotframe.engine.marketplace_client",
-    # Forms
-    "FormRenderer": "hotframe.forms.rendering",
     # Config
     "get_engine": "hotframe.config.database",
     "get_session_factory": "hotframe.config.database",
-    # Storage
-    "MediaStorage": "hotframe.storage.media",
-    "get_media_storage": "hotframe.storage.media",
     # HTTP clients
     "AuthenticatedClient": "hotframe.http",
     "HttpClientRegistry": "hotframe.http",
@@ -110,6 +110,14 @@ _LAZY_IMPORTS: dict[str, str] = {
     "RefreshInterceptor": "hotframe.http",
     "exponential_backoff": "hotframe.http",
     "discover_interceptors": "hotframe.http",
+    # Reactivity (Datastar facade)
+    "reactive": "hotframe.reactivity",
+    "sse_response": "hotframe.reactivity",
+    "SSEResponse": "hotframe.reactivity",
+    "ServerSentEventGenerator": "hotframe.reactivity",
+    "read_signals": "hotframe.reactivity",
+    "ReadSignals": "hotframe.reactivity",
+    "SSE_HEADERS": "hotframe.reactivity",
 }
 
 

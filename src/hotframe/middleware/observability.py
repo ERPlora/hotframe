@@ -1,23 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
 """
-Request ID middleware with observability context binding.
+Per-request observability middleware.
 
-Generates or reads a unique request ID (``X-Request-ID`` header) for every
-request.  The ID is stored on ``request.state.request_id`` and echoed back
-in the response headers.
+Reads the request id produced by ``asgi_correlation_id.CorrelationIdMiddleware``
+(via its contextvar), binds it together with hub/user identifiers into the
+hotframe observability context, and records a request-duration histogram.
 
-Also binds request-scoped context (request_id, hub_id, user_id) into the
-observability context (contextvars) so that all downstream logging, tracing,
-and metrics automatically include these identifiers.
-
-In production, the ALB/CloudFront may inject the header; if present we reuse
-it, otherwise we generate a new one.
+The X-Request-ID header lifecycle (generate, propagate, echo) is owned by
+``asgi-correlation-id``. This middleware only adds the bits Starlette's
+correlation-id stack does not provide: the OpenTelemetry histogram and the
+hub/user context binding.
 """
 
 from __future__ import annotations
 
 import time
-import uuid
 
+from asgi_correlation_id.context import correlation_id
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
@@ -25,19 +24,12 @@ from starlette.responses import Response
 from hotframe.utils.observability_context import bind_context, update_context
 from hotframe.utils.observability_metrics import get_request_duration_histogram
 
-HEADER = "X-Request-ID"
 
-
-class RequestIdMiddleware(BaseHTTPMiddleware):
-    """Attach a unique request ID and bind observability context per request."""
+class RequestObservabilityMiddleware(BaseHTTPMiddleware):
+    """Bind observability context and record request duration."""
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        # Reuse upstream ID or generate a new one
-        request_id = request.headers.get(HEADER) or str(uuid.uuid4())
-        request.state.request_id = request_id
-
-        # Extract hub_id and user_id if available from request state
-        # (set by session/auth middleware that runs after us — we update later)
+        request_id = correlation_id.get() or ""
         hub_id = str(getattr(request.state, "hub_id", "") or "")
         user_id = str(getattr(request.state, "user_id", "") or "")
 
@@ -46,7 +38,6 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             duration_ms = (time.perf_counter() - start) * 1000
 
-            # Record request duration metric
             route = request.scope.get("path", request.url.path)
             get_request_duration_histogram().record(
                 duration_ms,
@@ -57,16 +48,11 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
                 },
             )
 
-        response.headers[HEADER] = request_id
         return response
 
 
 def bind_user_context(user_id: str, hub_id: str = "") -> None:
-    """
-    Update observability context with user/hub info after authentication.
-
-    Called from auth dependencies or session middleware once the user is known.
-    """
+    """Update observability context with user/hub info post-authentication."""
     kwargs: dict[str, str] = {}
     if user_id:
         kwargs["user_id"] = user_id

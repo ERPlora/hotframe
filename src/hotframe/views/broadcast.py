@@ -22,27 +22,14 @@ propagate events across containers via PostgreSQL LISTEN/NOTIFY.
 
 Usage from a module view::
 
-    from hotframe.views.broadcast import broadcast, get_broadcast_hub
-    from hotframe.views.streams import TurboStream
+    from hotframe.views.broadcast import get_broadcast_hub
 
-    @router.post("/m/todo/create/")
-    @htmx_view(module_id="todo", view_id="create")
     async def create_todo(request, db, user, hub_id):
         todo = await create(db, request.form)
-        count = await Todo.count(db, hub_id)
-
         # Broadcast to all clients watching "todos"
         hub = get_broadcast_hub(request)
-        await hub.publish("todos", TurboStream.append(
-            "#todo-list", html=rendered_item
-        ).to_oob_html())
-
+        await hub.publish("todos", rendered_item)
         return {"todo": todo}
-
-Template (subscribe)::
-
-    {{ stream_from("todos") }}
-    <ul id="todo-list">...</ul>
 """
 
 from __future__ import annotations
@@ -159,12 +146,8 @@ async def stream_topic(
 ) -> Response:
     """SSE endpoint that streams messages for a topic to the browser.
 
-    Clients connect via HTMX SSE extension::
-
-        <div hx-ext="sse" sse-connect="/stream/todos" sse-swap="message">
-
-    Each message is an HTML fragment (typically a TurboStream OOB swap)
-    that HTMX processes to update the DOM.
+    Each message is an HTML fragment that the browser processes to
+    update the DOM (handled by Datastar / the project's reactivity layer).
 
     Authentication: requires an active session. Anonymous callers receive 401.
     """
@@ -283,7 +266,7 @@ async def ws_broadcast_handler(websocket: WebSocket, topic: str) -> None:
     (policy violation, application-defined) before ``accept()`` is called.
     """
     from hotframe.auth.auth import SESSION_USER_KEY
-    from hotframe.middleware.session import get_session_data
+    from hotframe.auth.session_helpers import get_session_data
 
     session = get_session_data(websocket)
     if not session.get(SESSION_USER_KEY):

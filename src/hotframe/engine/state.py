@@ -11,7 +11,7 @@ from __future__ import annotations
 import importlib
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from sqlalchemy import delete, select, update
 
@@ -19,6 +19,22 @@ if TYPE_CHECKING:
     from hotframe.db.protocols import ISession
 
 logger = logging.getLogger(__name__)
+
+
+# Canonical set of values stored in ``Module.status``. The column itself is
+# free-text (``String(20)``) — projects subclassing the model are not forced
+# to a DB-level enum — but new code must use one of these literals so the
+# boundary middleware, marketplace UI, and ``get_active_modules`` filter all
+# stay in sync.
+#
+# - ``installing`` — install pipeline in progress
+# - ``active``     — fully operational, eligible for boot mounting
+# - ``disabled``   — explicitly turned off by the user/admin
+# - ``error``      — install/activate/uninstall raised; not operational
+# - ``degraded``   — still mounted but failing repeatedly; UI invites the
+#                    user to disable. Distinct from ``error`` (which means
+#                    "won't load") and from ``disabled`` (user choice).
+ModuleStatus = Literal["installing", "active", "disabled", "error", "degraded"]
 
 
 if TYPE_CHECKING:
@@ -203,6 +219,29 @@ class ModuleStateDB:
         """Set module status to 'error' and store the error message."""
         await self.set_status(session, module_id, "error", error=error_message, **filters)
         logger.error("Module %s error: %s", module_id, error_message)
+
+    async def set_degraded(
+        self,
+        session: ISession,
+        module_id: str,
+        error_message: str,
+        **filters: Any,
+    ) -> None:
+        """Mark a module as ``degraded`` after recurrent runtime errors.
+
+        Conceptually distinct from ``set_error``: ``degraded`` means the
+        module is still mounted and answering, but its boundary tracker
+        crossed the failure threshold and the user should review/disable
+        it. ``error`` means the module could not be loaded at all.
+
+        ``get_active_modules`` deliberately does *not* return degraded
+        rows — the next reboot leaves the module dormant until the user
+        reactivates it through the UI, matching the design in doc 05.
+        """
+        await self.set_status(
+            session, module_id, "degraded", error=error_message, **filters
+        )
+        logger.warning("Module %s marked degraded: %s", module_id, error_message)
 
     async def update_manifest(
         self,

@@ -54,7 +54,6 @@ def create_test_app(settings: Any | None = None, **overrides: Any) -> FastAPI:
             "SECRET_KEY": "test-secret-key-not-for-production",
             "CSRF_EXEMPT_PREFIXES": ["/"],  # Exempt all routes in tests
             "RATE_LIMIT_API": 999999,
-            "RATE_LIMIT_HTMX": 999999,
             "RATE_LIMIT_AUTH": 999999,
             "LOG_LEVEL": "WARNING",
         }
