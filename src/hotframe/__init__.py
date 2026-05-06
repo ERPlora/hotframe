@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """hotframe — Modular Python web framework with hot-mount dynamic modules."""
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 # ---------------------------------------------------------------------------
 # Lazy imports — only loaded when accessed
@@ -42,7 +42,14 @@ _LAZY_IMPORTS: dict[str, str] = {
     "register_event": "hotframe.signals.types",
     # ORM
     "setup_orm_events": "hotframe.orm.events",
-    # Views
+    # Views — reactive (Datastar) decorator + helpers
+    "view": "hotframe.views.responses",
+    "is_reactive_request": "hotframe.views.responses",
+    "reactive_redirect": "hotframe.views.responses",
+    "reactive_refresh": "hotframe.views.responses",
+    "reactive_trigger": "hotframe.views.responses",
+    "reactive_message": "hotframe.views.responses",
+    # Views — legacy HTMX aliases (removed in 0.3)
     "htmx_view": "hotframe.views.responses",
     "is_htmx_request": "hotframe.views.responses",
     "htmx_redirect": "hotframe.views.responses",
@@ -50,8 +57,6 @@ _LAZY_IMPORTS: dict[str, str] = {
     "htmx_trigger": "hotframe.views.responses",
     "add_message": "hotframe.views.responses",
     "sse_stream": "hotframe.views.responses",
-    "TurboStream": "hotframe.views.streams",
-    "StreamResponse": "hotframe.views.streams",
     "BroadcastHub": "hotframe.views.broadcast",
     # Templating
     "SlotRegistry": "hotframe.templating.slots",

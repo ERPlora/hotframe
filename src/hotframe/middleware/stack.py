@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def _import_class(dotted_path: str) -> type:
-    """Import a class from a dotted path like 'hotframe.middleware.htmx.HtmxMiddleware'."""
+    """Import a class from a dotted path like 'hotframe.auth.csrf.CSRFMiddleware'."""
     module_path, class_name = dotted_path.rsplit(".", 1)
     mod = importlib.import_module(module_path)
     return getattr(mod, class_name)
@@ -51,7 +51,6 @@ def _get_middleware_kwargs(cls: type, settings: HotframeSettings) -> dict[str, A
         auth_rate = 10000 if settings.DEBUG else settings.RATE_LIMIT_AUTH
         return {
             "api_rate": settings.RATE_LIMIT_API,
-            "htmx_rate": settings.RATE_LIMIT_HTMX,
             "auth_rate": auth_rate,
             "window": 60,
             "auth_prefixes": tuple(settings.RATE_LIMIT_AUTH_PREFIXES),

@@ -138,8 +138,6 @@ class HotframeSettings(BaseSettings):
         "hotframe.engine.boundary.ModuleBoundaryMiddleware",
         "hotframe.middleware.module_middleware.ModuleMiddlewareManager",
         "hotframe.auth.csrf.CSRFMiddleware",
-        "hotframe.middleware.htmx_messages.HtmxMessagesMiddleware",
-        "hotframe.middleware.htmx.HtmxMiddleware",
         "hotframe.middleware.language.LanguageMiddleware",
         "hotframe.middleware.csp.CSPMiddleware",
         "starlette.middleware.sessions.SessionMiddleware",
@@ -154,7 +152,6 @@ class HotframeSettings(BaseSettings):
 
     # --- Rate limiting ---
     RATE_LIMIT_API: int = 120  # requests per minute
-    RATE_LIMIT_HTMX: int = 300
     RATE_LIMIT_AUTH: int = 60
     RATE_LIMIT_AUTH_PREFIXES: list[str] = []
 

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "hotframe"
 dynamic = ["version"]
-description = "Modular Python web framework with hot-mount dynamic modules — FastAPI + SQLAlchemy + Jinja + HTMX + Alpine."
+description = "Modular Python web framework with hot-mount dynamic modules — FastAPI + SQLAlchemy + Jinja + Datastar."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
@@ -15,15 +15,14 @@ authors = [
 keywords = [
     "fastapi",
     "sqlalchemy",
-    "htmx",
-    "alpine",
+    "datastar",
+    "sse",
+    "reactive",
     "jinja2",
     "framework",
     "modular",
     "plugins",
     "hot-reload",
-    "turbo",
-    "livewire",
 ]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",

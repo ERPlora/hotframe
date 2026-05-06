@@ -51,7 +51,7 @@ class TestHotframeSettings:
     def test_middleware_defaults(self):
         s = HotframeSettings()
         assert len(s.MIDDLEWARE) > 0
-        assert "hotframe.middleware.htmx.HtmxMiddleware" in s.MIDDLEWARE
+        assert "hotframe.auth.csrf.CSRFMiddleware" in s.MIDDLEWARE
 
     def test_csrf_exempt_defaults(self):
         s = HotframeSettings()

@@ -3,11 +3,10 @@ middleware — ASGI middleware stack for the Hub FastAPI application.
 
 ``build_middleware_stack`` registers all standard middlewares in the
 correct order onto a ``FastAPI`` instance: Starlette session, CSP, CSRF,
-HTMX headers, correlation id (``asgi-correlation-id``), per-request
-observability, i18n, rate limiting, body-size limit, optional proxy
-fix, and timeout. ``MiddlewareStackManager`` handles hot-reload of
-per-module middleware when modules are activated or deactivated at
-runtime.
+correlation id (``asgi-correlation-id``), per-request observability,
+i18n, rate limiting, body-size limit, optional proxy fix, and timeout.
+``MiddlewareStackManager`` handles hot-reload of per-module middleware
+when modules are activated or deactivated at runtime.
 
 Key exports::
 

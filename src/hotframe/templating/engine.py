@@ -137,10 +137,9 @@ def create_template_engine(modules_dir: Path | None = None) -> Jinja2Templates:
     register_extensions(env)
     register_component_globals(env)
 
-    # Reactivity (Datastar facade) — additive alongside HTMX/Alpine helpers.
-    # Templates can use ``{{ reactive.on('click', '@get(\'/x\')') }}`` to emit
-    # ``data-on:click=...`` attributes. HTMX/Alpine helpers remain registered
-    # by ``register_extensions`` and continue to work unchanged.
+    # Reactivity (Datastar facade). Templates can use
+    # ``{{ reactive.on('click', '@get(\'/x\')') }}`` to emit
+    # ``data-on:click=...`` attributes.
     env.globals["reactive"] = reactive
 
     # Install gettext translations so {% trans %} and _() work in templates.
