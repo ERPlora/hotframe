@@ -19,8 +19,6 @@ if TYPE_CHECKING:
 def register_extensions(env: Environment) -> None:
     """Register global functions and filters on the Jinja2 environment."""
     from hotframe.middleware.i18n_support import get_current_language, ngettext
-    from hotframe.templating.alpine_helpers import ALPINE_HELPERS
-    from hotframe.templating.htmx_helpers import HTMX_HELPERS
 
     env.globals.update(
         {
@@ -33,13 +31,9 @@ def register_extensions(env: Environment) -> None:
             "get_current_language": get_current_language,
             "csrf_input": lambda: Markup(""),
             "stat_card": stat_card_helper,
-            "no_boost": _no_boost,
-            "stream_from": _stream_from,
         }
     )
 
-    env.globals.update(HTMX_HELPERS)
-    env.globals.update(ALPINE_HELPERS)
     env.filters.update(
         {
             "currency": currency_filter,
@@ -49,22 +43,6 @@ def register_extensions(env: Environment) -> None:
             "truncatewords": truncatewords_filter,
             "slugify": slugify_filter,
         }
-    )
-
-
-# ---------------------------------------------------------------------------
-# HTMX layer helpers
-# ---------------------------------------------------------------------------
-
-
-def _no_boost() -> Markup:
-    return Markup('hx-boost="false"')
-
-
-def _stream_from(topic: str) -> Markup:
-    return Markup(
-        f'<div hx-ext="sse" sse-connect="/stream/{topic}" '
-        f'sse-swap="message" style="display:contents"></div>'
     )
 
 

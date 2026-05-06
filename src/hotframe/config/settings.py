@@ -126,15 +126,21 @@ class HotframeSettings(BaseSettings):
         "hotframe.middleware.timeout.TimeoutMiddleware",
         "hotframe.middleware.error_pages.ErrorPageMiddleware",
         "hotframe.middleware.body_limit.BodyLimitMiddleware",
-        "hotframe.middleware.request_id.RequestIdMiddleware",
+        "asgi_correlation_id.CorrelationIdMiddleware",
+        "hotframe.middleware.observability.RequestObservabilityMiddleware",
         "hotframe.middleware.rate_limit.APIRateLimitMiddleware",
+        # Boundary sits OUTSIDE ``ModuleMiddlewareManager`` (and therefore
+        # also outside the module's own router) so it can catch exceptions
+        # raised by either layer. It is placed before module-scoped
+        # middleware so a buggy module-contributed middleware is also
+        # caught, but inside the global request-id/observability layer so
+        # captured errors still carry their correlation IDs.
+        "hotframe.engine.boundary.ModuleBoundaryMiddleware",
         "hotframe.middleware.module_middleware.ModuleMiddlewareManager",
         "hotframe.auth.csrf.CSRFMiddleware",
-        "hotframe.middleware.htmx_messages.HtmxMessagesMiddleware",
-        "hotframe.middleware.htmx.HtmxMiddleware",
         "hotframe.middleware.language.LanguageMiddleware",
         "hotframe.middleware.csp.CSPMiddleware",
-        "hotframe.middleware.session.SessionMiddleware",
+        "starlette.middleware.sessions.SessionMiddleware",
     ]
 
     # --- CSRF ---
@@ -146,7 +152,6 @@ class HotframeSettings(BaseSettings):
 
     # --- Rate limiting ---
     RATE_LIMIT_API: int = 120  # requests per minute
-    RATE_LIMIT_HTMX: int = 300
     RATE_LIMIT_AUTH: int = 60
     RATE_LIMIT_AUTH_PREFIXES: list[str] = []
 
@@ -155,7 +160,13 @@ class HotframeSettings(BaseSettings):
     SESSION_MAX_AGE: int = 86400 * 30  # 30 days
 
     # --- CSP ---
-    CSP_TRUSTED_TYPES: bool = True
+    # Trusted Types is OFF by default: incompatible with HTMX, Alpine, and
+    # Datastar 1.0, all of which use ``Function()`` / ``insertAdjacentHTML``
+    # patterns that ``require-trusted-types-for 'script'`` blocks. Datastar's
+    # own security docs state that ``unsafe-eval`` is required.
+    # Defense-in-depth still rests on: nonces + CSP, CSRF, Jinja escape,
+    # SameSite=Strict cookies, signed sessions.
+    CSP_TRUSTED_TYPES: bool = False
     CSP_ALLOWED_SOURCES: dict[str, list[str]] = {
         "script": [],
         "style": [],

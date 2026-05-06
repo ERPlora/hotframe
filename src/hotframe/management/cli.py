@@ -152,7 +152,6 @@ def startproject(name: str) -> None:
             # Rate limiting
             # -----------------------------------------------------------------
             # RATE_LIMIT_API: int = 120          # requests/min for /api/
-            # RATE_LIMIT_HTMX: int = 300         # requests/min for /m/
             # RATE_LIMIT_AUTH: int = 60           # requests/min for auth routes
             # RATE_LIMIT_AUTH_PREFIXES: list[str] = []
 
@@ -179,8 +178,7 @@ def startproject(name: str) -> None:
             # CSP_ENFORCE = True: blocks any resource not explicitly allowed
             #
             # CSP_TRUSTED_TYPES = True (default): enables Trusted Types policy
-            # in the CSP header and renders the JS policy in base.html so that
-            # HTMX and Alpine.js work under Trusted Types enforcement.
+            # in the CSP header and renders the JS policy in base.html.
             #
             # CSP_ALLOWED_SOURCES: allow-list of external domains per resource
             # type. The example below shows the CDNs used by base.html. Add
@@ -190,8 +188,7 @@ def startproject(name: str) -> None:
             # CSP_TRUSTED_TYPES: bool = True
             # CSP_ALLOWED_SOURCES: dict[str, list[str]] = {{
             #     "script": [                         # <script src="...">
-            #         "https://unpkg.com",            # HTMX, Alpine.js
-            #         "https://cdn.jsdelivr.net",     # Iconify
+            #         "https://cdn.jsdelivr.net",     # Datastar, Iconify
             #     ],
             #     "style": [],                        # <link rel="stylesheet">
             #     "connect": [],                      # fetch(), WebSocket
@@ -222,15 +219,14 @@ def startproject(name: str) -> None:
             #     "hotframe.middleware.timeout.TimeoutMiddleware",
             #     "hotframe.middleware.error_pages.ErrorPageMiddleware",
             #     "hotframe.middleware.body_limit.BodyLimitMiddleware",
-            #     "hotframe.middleware.request_id.RequestIdMiddleware",
+            #     "asgi_correlation_id.CorrelationIdMiddleware",
+            #     "hotframe.middleware.observability.RequestObservabilityMiddleware",
             #     "hotframe.middleware.rate_limit.APIRateLimitMiddleware",
             #     "hotframe.middleware.module_middleware.ModuleMiddlewareManager",
             #     "hotframe.auth.csrf.CSRFMiddleware",
-            #     "hotframe.middleware.htmx_messages.HtmxMessagesMiddleware",
-            #     "hotframe.middleware.htmx.HtmxMiddleware",
             #     "hotframe.middleware.language.LanguageMiddleware",
             #     "hotframe.middleware.csp.CSPMiddleware",
-            #     "hotframe.middleware.session.SessionMiddleware",
+            #     "starlette.middleware.sessions.SessionMiddleware",
             # ]
 
 

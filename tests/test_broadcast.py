@@ -25,7 +25,6 @@ def _build_app() -> TestClient:
         LOG_LEVEL="WARNING",
         CSRF_EXEMPT_PREFIXES=["/"],
         RATE_LIMIT_API=999999,
-        RATE_LIMIT_HTMX=999999,
         RATE_LIMIT_AUTH=999999,
     )
     set_settings(settings)

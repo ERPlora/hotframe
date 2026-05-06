@@ -1,8 +1,9 @@
 """
-Jinja2 extension for HTMX frames (equivalent to Turbo Frames).
+Jinja2 extension for Datastar frames (equivalent to Turbo Frames).
 
-Provides a ``{% frame %}`` tag that generates HTMX-powered containers
-with automatic ``hx-get``, ``hx-trigger``, ``hx-swap`` attributes.
+Provides a ``{% frame %}`` tag that generates Datastar-powered containers
+emitting ``data-on-intersect`` / ``data-on:load`` / ``data-on:<event>``
+attributes that drive a server-sent fragment stream.
 
 Usage::
 
@@ -14,11 +15,14 @@ Usage::
         <div class="skeleton h-32"></div>
     {% endframe %}
 
-    {% frame "search-results" %}
-        <div id="search-results">
-            {% for item in items %}...{% endfor %}
-        </div>
+    {% frame "search-results" trigger="click" src="/search" %}
+        <div>Click to load</div>
     {% endframe %}
+
+The tag signature is preserved for backward compatibility; ``swap`` and
+``target`` are accepted but no longer emitted into the markup because in
+Datastar the server controls element selection via ``patch_elements``.
+``push_url=true`` is forwarded as ``{history: 'push'}`` to ``@get``.
 """
 
 from __future__ import annotations
@@ -28,7 +32,7 @@ from jinja2.ext import Extension
 
 
 class FrameExtension(Extension):
-    """Jinja2 extension for HTMX frames (equivalent to Turbo Frames)."""
+    """Jinja2 extension for Datastar frames (equivalent to Turbo Frames)."""
 
     tags = {"frame"}
 
@@ -68,29 +72,30 @@ class FrameExtension(Extension):
         frame_id,
         src=None,
         lazy=False,
-        swap="innerHTML",
+        swap="innerHTML",  # accepted for back-compat, not emitted in Datastar
         trigger=None,
-        target=None,
+        target=None,  # accepted for back-compat, not emitted in Datastar
         push_url=False,
         caller=None,
     ):
         attrs = [f'id="{frame_id}"']
 
         if src:
-            attrs.append(f'hx-get="{src}"')
-            if lazy:
-                attrs.append('hx-trigger="revealed"')
+            # Build the Datastar action expression: @get('/url'[, {history: 'push'}])
+            if push_url:
+                action = f"@get('{src}', {{history: 'push'}})"
             else:
-                attrs.append('hx-trigger="load"')
-            attrs.append(f'hx-swap="{swap}"')
-        elif target:
-            attrs.append(f'hx-target="{target}"')
+                action = f"@get('{src}')"
 
-        if push_url:
-            attrs.append('hx-push-url="true"')
-
-        if trigger and not lazy:
-            attrs.append(f'hx-trigger="{trigger}"')
+            if lazy:
+                # Lazy load when the frame scrolls into view.
+                attrs.append(f'data-on-intersect="{action}"')
+            elif trigger and trigger != "load":
+                # Custom DOM event (click, mouseenter, etc.)
+                attrs.append(f'data-on:{trigger}="{action}"')
+            else:
+                # Default: fire as soon as the element is mounted.
+                attrs.append(f'data-on:load="{action}"')
 
         attr_str = " ".join(attrs)
         inner = caller()

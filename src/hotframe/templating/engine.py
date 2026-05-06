@@ -28,6 +28,8 @@ from pathlib import Path
 from fastapi.templating import Jinja2Templates
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from hotframe.reactivity import reactive
+
 logger = logging.getLogger(__name__)
 
 # Root templates directory: resolved from the project's working directory,
@@ -134,6 +136,11 @@ def create_template_engine(modules_dir: Path | None = None) -> Jinja2Templates:
 
     register_extensions(env)
     register_component_globals(env)
+
+    # Reactivity (Datastar facade). Templates can use
+    # ``{{ reactive.on('click', '@get(\'/x\')') }}`` to emit
+    # ``data-on:click=...`` attributes.
+    env.globals["reactive"] = reactive
 
     # Install gettext translations so {% trans %} and _() work in templates.
     # The translations adapter uses the context-local language (set per-request

@@ -36,7 +36,6 @@ async def get_global_context(request: Request) -> dict[str, Any]:
         "csp_trusted_types": _get_settings().CSP_TRUSTED_TYPES,
         "csrf_token": csrf_token,
         "csrf_input": lambda: _csrf_markup,
-        "is_htmx": getattr(getattr(request.state, "htmx", None), "is_htmx", False),
         "debug": getattr(request.app.state, "debug", False),
         "current_path": request.url.path,
     }

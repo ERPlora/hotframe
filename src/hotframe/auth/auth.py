@@ -82,7 +82,7 @@ def get_session_user_id(request: Request) -> UUID | None:
     Returns:
         The user UUID if authenticated, None otherwise.
     """
-    session: dict = getattr(request.state, "session", {})
+    session = request.session
     raw = session.get(SESSION_USER_KEY)
     if raw is None:
         return None
@@ -100,18 +100,13 @@ def create_session(request: Request, user_id: UUID) -> None:
         request: The current request (must have session middleware active).
         user_id: The authenticated user's UUID.
     """
-    session: dict = getattr(request.state, "session", None) or {}
-    session[SESSION_USER_KEY] = str(user_id)
-    request.state.session = session
+    request.session[SESSION_USER_KEY] = str(user_id)
 
 
 def destroy_session(request: Request) -> None:
     """
     Clear all session data (logout).
 
-    Preserves the session dict reference but removes all keys,
-    so the session middleware will delete the cookie on response.
+    The session middleware will delete the cookie on response.
     """
-    session: dict | None = getattr(request.state, "session", None)
-    if session is not None:
-        session.clear()
+    request.session.clear()
