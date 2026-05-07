@@ -35,9 +35,10 @@ def _get_middleware_kwargs(cls: type, settings: HotframeSettings) -> dict[str, A
     from hotframe.middleware.csp import CSPMiddleware
     from hotframe.middleware.module_middleware import ModuleMiddlewareManager
     from hotframe.middleware.rate_limit import APIRateLimitMiddleware
+    from hotframe.middleware.session_safe import RobustSessionMiddleware
     from hotframe.middleware.timeout import TimeoutMiddleware
 
-    if cls is SessionMiddleware:
+    if cls is SessionMiddleware or cls is RobustSessionMiddleware:
         return {
             "secret_key": settings.SECRET_KEY,
             "max_age": settings.SESSION_MAX_AGE,

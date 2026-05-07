@@ -140,7 +140,7 @@ class HotframeSettings(BaseSettings):
         "hotframe.auth.csrf.CSRFMiddleware",
         "hotframe.middleware.language.LanguageMiddleware",
         "hotframe.middleware.csp.CSPMiddleware",
-        "starlette.middleware.sessions.SessionMiddleware",
+        "hotframe.middleware.session_safe.RobustSessionMiddleware",
     ]
 
     # --- CSRF ---
