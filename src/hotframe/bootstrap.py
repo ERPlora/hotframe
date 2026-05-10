@@ -103,9 +103,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.templates = create_template_engine(modules_dir=settings.MODULES_DIR)
 
     # Expose the component registry to the Jinja2 environment so the
-    # ``render_component`` global and ``{% component %}`` tag can resolve
-    # entries without having to reach into ``app.state`` at render time.
+    # ``render_component`` global and ``{% component %}`` / ``{% live %}``
+    # tags can resolve entries without having to reach into ``app.state``
+    # at render time.
     app.state.templates.env.globals["_hotframe_components"] = components
+
+    # Live runtime — owns the per-WS sessions and the dispatch loop.
+    # Components run their on_mount/event handlers through this object.
+    from hotframe.live.runtime import LiveRuntime
+
+    app.state.live = LiveRuntime(components, app.state.templates.env)
 
     # 6. Initialize ModuleRuntime
     from hotframe.engine.module_runtime import ModuleRuntime
@@ -157,6 +164,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # --- SHUTDOWN ---
     if app.state.module_runtime is not None:
         await app.state.module_runtime.shutdown()
+
+    # Drain every live session — runs on_unmount on each component and
+    # closes the dict so memory is released cleanly.
+    live_runtime = getattr(app.state, "live", None)
+    if live_runtime is not None:
+        await live_runtime.shutdown()
 
     # Close every HTTP client still registered — project-scoped clients
     # live for the process, and modules may have skipped their own
@@ -260,6 +273,14 @@ def create_app(settings: HotframeSettings | None = None) -> FastAPI:
 
     app.include_router(broadcast_router)
 
+    # --- Live runtime WebSocket endpoint ---
+    # Mounts /ws/_live for stateful component sessions. The session id
+    # is derived from the signed cookie at handshake time (see
+    # hotframe.live.ws._resolve_session_id).
+    from hotframe.live.ws import live_router
+
+    app.include_router(live_router)
+
     # --- Health check ---
     @app.get("/health", tags=["system"])
     async def health():
@@ -286,6 +307,24 @@ def create_app(settings: HotframeSettings | None = None) -> FastAPI:
             response = await super().get_response(path, scope)
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
             return response
+
+    # --- Hotframe-shipped static assets ---
+    # Mount the framework's own static directory at /static/hotframe/.
+    # Today this serves the live runtime client (live.js + morphdom).
+    # Always mounted because the live layer is built-in, not optional.
+    #
+    # IMPORTANT: this MUST mount before the generic /static/ root mount
+    # below. Starlette routes mounts in registration order, so the generic
+    # /static/ would otherwise swallow /static/hotframe/* and return 404.
+    from hotframe import live as _live_pkg
+
+    live_static_dir = _Path(_live_pkg.__file__).parent / "static"
+    if live_static_dir.is_dir():
+        app.mount(
+            "/static/hotframe",
+            CachedStaticFiles(directory=str(live_static_dir)),
+            name="hotframe-static",
+        )
 
     static_root = _Path(settings.STATIC_ROOT).resolve()
     if static_root.exists():
@@ -344,7 +383,7 @@ def create_app(settings: HotframeSettings | None = None) -> FastAPI:
 def _auto_discover_apps(app: FastAPI) -> None:
     """Auto-discover and mount app routers from apps/ directory.
 
-    Scans ``apps/*/`` for ``routes.py`` (HTMX views) and ``api.py``
+    Scans ``apps/*/`` for ``routes.py`` (HTML views) and ``api.py``
     (REST API) and mounts any ``router`` / ``api_router`` found.
 
     Also calls ``AppConfig.ready()`` if ``app.py`` defines one. Because

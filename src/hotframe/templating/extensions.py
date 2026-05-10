@@ -2,7 +2,10 @@
 """
 Jinja2 global functions and filters.
 
-Replaces Django template tags and provides HTMX/Alpine.js helpers.
+Adds the helpers templates rely on at render time: ``static`` and
+``url_for`` for asset / route resolution, ``icon`` for Iconify
+markup, ``stat_card`` for dashboard tiles, plus a small set of
+filters (``currency``, ``dateformat``, ``timesince``, ``slugify`` …).
 """
 
 from __future__ import annotations

@@ -2,9 +2,9 @@
 """
 Global template context builder.
 
-The ``get_global_context`` coroutine is called by ``@htmx_view`` before
-every template render. Application-specific context can be added via
-``settings.GLOBAL_CONTEXT_HOOK``.
+The ``get_global_context`` coroutine is called by the ``@view``
+decorator before every template render. Application-specific context
+can be added via ``settings.GLOBAL_CONTEXT_HOOK``.
 """
 
 from __future__ import annotations

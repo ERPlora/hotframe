@@ -146,8 +146,10 @@ async def stream_topic(
 ) -> Response:
     """SSE endpoint that streams messages for a topic to the browser.
 
-    Each message is an HTML fragment that the browser processes to
-    update the DOM (handled by Datastar / the project's reactivity layer).
+    Each message is an opaque payload (typically an HTML fragment or
+    JSON blob) the consumer interprets however it wants. This endpoint
+    is independent of the live runtime; live updates flow over the
+    dedicated ``/ws/_live`` WebSocket instead.
 
     Authentication: requires an active session. Anonymous callers receive 401.
     """

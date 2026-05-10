@@ -145,7 +145,7 @@ class TestDiscoveryWarnings:
         assert len(entries) == 1
         assert entries[0].props_cls is None
         assert any(
-            "subclass of hotframe.components.Component" in rec.message for rec in caplog.records
+            "no Component or LiveComponent subclass" in rec.message for rec in caplog.records
         )
 
     def test_routes_py_without_router_variable_warns(self, tmp_components_root, caplog):

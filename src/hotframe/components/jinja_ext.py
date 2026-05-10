@@ -17,8 +17,6 @@ Inside ``modal/template.html``::
         <div class="modal-body">{{ body }}</div>
     </div>
 
-Mirrors the shape of :class:`hotframe.templating.frame_extension.FrameExtension`.
-
 Jinja2 does not accept Python reserved words as call kwargs, so HTML
 attributes like ``class`` must be passed via a dict::
 

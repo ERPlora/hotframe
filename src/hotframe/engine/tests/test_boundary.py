@@ -152,14 +152,12 @@ def fake_state_db(monkeypatch: pytest.MonkeyPatch) -> _FakeStateDB:
 # ---------------------------------------------------------------------------
 
 
-def test_extract_module_id_htmx_route() -> None:
+def test_extract_module_id_view_route() -> None:
     assert ModuleBoundaryMiddleware._extract_module_id("/m/sales/orders") == "sales"
 
 
 def test_extract_module_id_api_route() -> None:
-    assert (
-        ModuleBoundaryMiddleware._extract_module_id("/api/v1/m/inventory/stock") == "inventory"
-    )
+    assert ModuleBoundaryMiddleware._extract_module_id("/api/v1/m/inventory/stock") == "inventory"
 
 
 def test_extract_module_id_non_module_path() -> None:

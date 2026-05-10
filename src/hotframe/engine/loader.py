@@ -6,7 +6,7 @@ running FastAPI application:
 
 1. Add module path to ``sys.path``
 2. ``importlib.import_module`` the package
-3. Discover ``routes.py`` (HTMX views) and ``api.py`` (REST API)
+3. Discover ``routes.py`` (HTML views) and ``api.py`` (REST API)
 4. Mount routers on the FastAPI app
 5. Discover ``events.py``, ``hooks.py``, ``slots.py`` — register with core registries
 6. Discover middleware class from manifest
@@ -104,7 +104,7 @@ class ModuleLoader:
             2. ``importlib.import_module(module_id)``
             3. Import ``{module_id}.routes`` → get ``router``
             4. Import ``{module_id}.api`` → get ``api_router``
-            5. Mount HTMX router at ``/m/{module_id}``
+            5. Mount HTML view router at ``/m/{module_id}``
             6. Mount API router at ``/api/v1/m/{module_id}``
             7. Import ``{module_id}.events`` → call ``register_events(bus, module_id)``
             8. Import ``{module_id}.hooks`` → call ``register_hooks(hooks, module_id)``
@@ -150,24 +150,24 @@ class ModuleLoader:
         components_static_mounted = False
 
         try:
-            # 3. HTMX routes
+            # 3. HTML view routes
             router = self._try_import_router(module_id, "routes", "router")
             if router is None:
-                logger.warning("Module %s: no HTMX router found in routes.py", module_id)
+                logger.warning("Module %s: no view router found in routes.py", module_id)
 
             # 4. API routes
             api_router = self._try_import_router(module_id, "api", "api_router")
 
-            # 5. Mount HTMX router (check for conflicts first)
+            # 5. Mount view router (check for conflicts first)
             if router is not None:
                 from starlette.routing import Mount
 
-                htmx_path = f"/m/{module_id}"
-                if self._route_exists(htmx_path):
+                view_path = f"/m/{module_id}"
+                if self._route_exists(view_path):
                     raise RuntimeError(
-                        f"Route conflict: {htmx_path} is already mounted by another module"
+                        f"Route conflict: {view_path} is already mounted by another module"
                     )
-                mount = Mount(htmx_path, app=router)
+                mount = Mount(view_path, app=router)
                 self.app.routes.append(mount)
                 mounted_routes.append(mount)
 
@@ -689,13 +689,13 @@ class ModuleLoader:
 
     def _remove_routes(self, module_id: str) -> None:
         """Remove all routes matching the module prefixes from the app."""
-        htmx_prefix = f"/m/{module_id}"
+        view_prefix = f"/m/{module_id}"
         api_prefix = f"/api/v1/m/{module_id}"
 
         self.app.routes[:] = [
             route
             for route in self.app.routes
-            if not _route_matches_prefix(route, htmx_prefix)
+            if not _route_matches_prefix(route, view_prefix)
             and not _route_matches_prefix(route, api_prefix)
         ]
 

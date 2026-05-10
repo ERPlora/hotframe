@@ -32,7 +32,7 @@ class ComponentEntry:
         name: Unique component identifier used by ``render_component(name, ...)``.
         template: Jinja2 template path (relative to the loader's search paths).
         has_endpoint: True if the component exposes an HTTP endpoint via
-            ``extra_router`` (for HTMX lazy-load or action handlers).
+            ``extra_router`` (for lazy-load fragments or action handlers).
         render_fn: Optional callable that returns the template context
             (a ``dict[str, Any]``) given the validated props. The framework
             then renders ``template`` with that context plus the framework
@@ -52,6 +52,11 @@ class ComponentEntry:
             ``component.py``. When set, callers' keyword arguments are
             validated against this class before rendering. ``None`` for
             template-only components.
+        is_live: ``True`` when ``props_cls`` is a subclass of
+            :class:`hotframe.live.LiveComponent`. The components subsystem
+            sets this on discovery so the live runtime can quickly tell
+            stateless components apart from stateful ones without
+            re-importing the class to call ``issubclass`` on every event.
     """
 
     name: str
@@ -62,3 +67,4 @@ class ComponentEntry:
     module_id: str | None = None
     static_dir: str | None = None
     props_cls: type | None = None
+    is_live: bool = False

@@ -12,8 +12,9 @@ This is the HEART of hotframe. It ties together:
 - **Watcher** — dev hot-reload
 
 Every module operation (install, activate, deactivate, uninstall, update)
-goes through this class. Both the API REST and HTMX views call the same
-methods — this is the shared business logic layer.
+goes through this class. The REST API endpoints and the HTML view
+handlers call the same methods — this is the shared business logic
+layer.
 """
 
 from __future__ import annotations
@@ -117,8 +118,8 @@ class ModuleRuntime:
     Central orchestrator for the module plugin system.
 
     Ties together all sub-systems (registry, loader, state, S3, deps,
-    lifecycle, migrations) into a cohesive API used by both REST endpoints
-    and HTMX views.
+    lifecycle, migrations) into a cohesive API used by both REST
+    endpoints and HTML view handlers.
 
     Usage::
 
@@ -365,7 +366,7 @@ class ModuleRuntime:
         the model configured via ``settings.MODULE_STATE_MODEL``:
 
         - Model has a ``hub_id`` column → iterate distinct hub_ids and call
-          :meth:`boot` for each (hub-aware projects like ERPlora Hub).
+          :meth:`boot` for each (multi-tenant / hub-aware projects).
         - Model has no ``hub_id`` column → call :meth:`boot` once with
           ``hub_id=None`` (framework built-in ``Module`` model).
 

@@ -19,7 +19,7 @@ from starlette.responses import JSONResponse, Response
 logger = logging.getLogger(__name__)
 
 DEFAULT_API_RATE = 120
-DEFAULT_HTMX_RATE = 300
+DEFAULT_VIEW_RATE = 300
 DEFAULT_AUTH_RATE = 60
 DEFAULT_WINDOW = 60
 
@@ -71,14 +71,14 @@ class APIRateLimitMiddleware(BaseHTTPMiddleware):
         self,
         app: Any,
         api_rate: int = DEFAULT_API_RATE,
-        htmx_rate: int = DEFAULT_HTMX_RATE,
+        view_rate: int = DEFAULT_VIEW_RATE,
         auth_rate: int = DEFAULT_AUTH_RATE,
         window: int = DEFAULT_WINDOW,
         auth_prefixes: tuple[str, ...] = (),
     ) -> None:
         super().__init__(app)
         self._api_rate = api_rate
-        self._htmx_rate = htmx_rate
+        self._view_rate = view_rate
         self._auth_rate = auth_rate
         self._window = window
         self._auth_prefixes = auth_prefixes
@@ -87,7 +87,7 @@ class APIRateLimitMiddleware(BaseHTTPMiddleware):
         if path.startswith("/api/"):
             return "api", self._api_rate
         if path.startswith("/m/"):
-            return "htmx", self._htmx_rate
+            return "view", self._view_rate
         if self._auth_prefixes and any(path.startswith(prefix) for prefix in self._auth_prefixes):
             return "auth", self._auth_rate
         return None

@@ -5,18 +5,18 @@ build-backend = "hatchling.build"
 [project]
 name = "hotframe"
 dynamic = ["version"]
-description = "Modular Python web framework with hot-mount dynamic modules — FastAPI + SQLAlchemy + Jinja + Datastar."
+description = "Modular Python web framework with hot-mount dynamic modules and stateful, WebSocket-driven LiveComponents — FastAPI + SQLAlchemy + Jinja2."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
 authors = [
-    { name = "ERPlora", email = "hello@erplora.com" },
+    { name = "Ioan Beilic", email = "ioanbeilic@gmail.com" },
 ]
 keywords = [
     "fastapi",
     "sqlalchemy",
-    "datastar",
-    "sse",
+    "websocket",
+    "live",
     "reactive",
     "jinja2",
     "framework",
@@ -25,7 +25,7 @@ keywords = [
     "hot-reload",
 ]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 4 - Beta",
     "Framework :: FastAPI",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
@@ -59,7 +59,7 @@ dependencies = [
     "opentelemetry-api>=1.20",
     "opentelemetry-sdk>=1.20",
     "aiosqlite>=0.19",
-    "datastar-py>=1.0.0",
+    "jinjax>=0.55",
     "asgi-correlation-id>=4.3.4",
 ]
 
@@ -82,11 +82,11 @@ shell = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ERPlora/hotframe"
-Documentation = "https://github.com/ERPlora/hotframe/tree/main/docs"
-Repository = "https://github.com/ERPlora/hotframe"
-Issues = "https://github.com/ERPlora/hotframe/issues"
-Changelog = "https://github.com/ERPlora/hotframe/blob/main/docs/CHANGELOG.md"
+Homepage = "https://hotframe.dev"
+Documentation = "https://hotframe.dev"
+Repository = "https://github.com/hotframe/hotframe"
+Issues = "https://github.com/hotframe/hotframe/issues"
+Changelog = "https://github.com/hotframe/hotframe/blob/main/CHANGELOG.md"
 
 [project.scripts]
 hf = "hotframe.management.cli:app"

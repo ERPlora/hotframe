@@ -39,7 +39,6 @@ _FRAMEWORK_CONTEXT_KEYS = (
     "csrf_token",
     "csp_nonce",
     "user",
-    "is_htmx",
     "current_path",
 )
 
@@ -122,8 +121,8 @@ def render_component(ctx: Context, __component_name__: str, /, **props) -> Marku
 
     Context is isolated: the component receives only the validated props
     plus a well-defined framework slice (``request``, ``csrf_token``,
-    ``csp_nonce``, ``user``, ``is_htmx``, ``current_path``). Parent
-    template variables do not leak in.
+    ``csp_nonce``, ``user``, ``current_path``). Parent template
+    variables do not leak in.
 
     Passing reserved Python words as kwargs (e.g. ``class``) is not
     supported by Jinja2. Use ``attrs={...}`` for arbitrary HTML

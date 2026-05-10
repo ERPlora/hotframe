@@ -188,7 +188,7 @@ def startproject(name: str) -> None:
             # CSP_TRUSTED_TYPES: bool = True
             # CSP_ALLOWED_SOURCES: dict[str, list[str]] = {{
             #     "script": [                         # <script src="...">
-            #         "https://cdn.jsdelivr.net",     # Datastar, Iconify
+            #         "https://cdn.jsdelivr.net",     # CDN-hosted libraries
             #     ],
             #     "style": [],                        # <link rel="stylesheet">
             #     "connect": [],                      # fetch(), WebSocket
@@ -360,7 +360,7 @@ def startproject(name: str) -> None:
                 )
             return HTMLResponse(
                 f"<h1>{request.app.title}</h1>"
-                f"<p>Powered by <a href=\\"https://github.com/ERPlora/hotframe\\">hotframe</a></p>"
+                f"<p>Powered by <a href=\\"https://hotframe.dev\\">hotframe</a></p>"
             )
     ''')
     )
@@ -378,12 +378,7 @@ def startproject(name: str) -> None:
             <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
             <title>{{%- block title %}}{name.replace("_", " ").title()}{{%- endblock %}}</title>
 
-            {{# ================================================================== #}}
-            {{# Trusted Types policy — allows Alpine.js and HTMX to work with CSP #}}
-            {{# Controlled by CSP_TRUSTED_TYPES setting (default: True)           #}}
-            {{# Creates a permissive 'default' policy so libraries like HTMX and  #}}
-            {{# Alpine.js work under Trusted Types enforcement.                   #}}
-            {{# ================================================================== #}}
+            {{# Optional Trusted Types policy — enable via CSP_TRUSTED_TYPES setting. #}}
             {{%- if csp_trusted_types %}}
             <script nonce="{{{{ csp_nonce }}}}">
             if (window.trustedTypes && trustedTypes.createPolicy) {{
@@ -396,322 +391,46 @@ def startproject(name: str) -> None:
             </script>
             {{%- endif %}}
 
-            {{# ================================================================== #}}
-            {{# HTMX + extensions                                                 #}}
-            {{# ================================================================== #}}
-            <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" nonce="{{{{ csp_nonce }}}}"></script>
-            <script src="https://unpkg.com/idiomorph@0.4.0/dist/idiomorph-ext.min.js" nonce="{{{{ csp_nonce }}}}"></script>
-            <script src="https://unpkg.com/htmx-ext-preload@2.1.0/preload.js" nonce="{{{{ csp_nonce }}}}"></script>
-            <script src="https://unpkg.com/htmx-ext-loading-states@2.0.1/loading-states.js" nonce="{{{{ csp_nonce }}}}"></script>
-            <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js" nonce="{{{{ csp_nonce }}}}"></script>
-
-            {{# ================================================================== #}}
-            {{# Alpine.js plugins (BEFORE Alpine core, all with defer)            #}}
-            {{# ================================================================== #}}
-            <script src="https://unpkg.com/@alpinejs/collapse@3.15.8/dist/cdn.min.js" defer nonce="{{{{ csp_nonce }}}}"></script>
-            <script src="https://unpkg.com/@alpinejs/intersect@3.15.8/dist/cdn.min.js" defer nonce="{{{{ csp_nonce }}}}"></script>
-            <script src="https://unpkg.com/@alpinejs/focus@3.15.8/dist/cdn.min.js" defer nonce="{{{{ csp_nonce }}}}"></script>
-            <script src="https://unpkg.com/@alpinejs/mask@3.15.8/dist/cdn.min.js" defer nonce="{{{{ csp_nonce }}}}"></script>
-            <script src="https://unpkg.com/@alpinejs/sort@3.15.8/dist/cdn.min.js" defer nonce="{{{{ csp_nonce }}}}"></script>
-
-            {{# Alpine.js core (MUST be LAST, after all plugins) #}}
-            <script src="https://unpkg.com/alpinejs@3.15.8/dist/cdn.min.js" defer nonce="{{{{ csp_nonce }}}}"></script>
-
-            {{# ================================================================== #}}
-            {{# Iconify (icon system via CDN)                                     #}}
-            {{# ================================================================== #}}
+            {{# Iconify (icon system via CDN) — optional, remove if unused. #}}
             <script src="https://cdn.jsdelivr.net/npm/@iconify/iconify@3.1.1/dist/iconify.min.js" defer nonce="{{{{ csp_nonce }}}}"></script>
 
-            {{# ================================================================== #}}
-            {{# HTMX configuration: morph by default, no settle delay, CSP nonce  #}}
-            {{# ================================================================== #}}
-            <meta name="htmx-config" content='{{"defaultSwapStyle":"morph","defaultSettleDelay":"0","inlineScriptNonce":"{{{{ csp_nonce }}}}"}}'>
-
-            {{# ================================================================== #}}
-            {{# Global styles                                                     #}}
-            {{# ================================================================== #}}
-            <style>
-                /* Alpine.js cloak — prevent flash of unstyled content */
-                [x-cloak] {{ display: none !important; }}
-
-                /* Smooth content transition */
-                @keyframes page-enter {{
-                    from {{ opacity: 0; transform: translateY(4px); }}
-                    to   {{ opacity: 1; transform: translateY(0); }}
-                }}
-                .page-entering {{
-                    animation: page-enter 0.18s ease-out both;
-                }}
-
-                /* HTMX request indicator */
-                .htmx-indicator {{ opacity: 0; transition: opacity 0.2s ease; }}
-                .htmx-request .htmx-indicator,
-                .htmx-request.htmx-indicator {{ opacity: 1; }}
-
-                /* Fixed top progress bar */
-                #htmx-indicator {{
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    height: 3px;
-                    background: var(--color-primary, #3b82f6);
-                    z-index: 9999;
-                    opacity: 0;
-                    transition: opacity 0.2s ease-out;
-                }}
-                .htmx-request #htmx-indicator,
-                .htmx-request.htmx-indicator {{ opacity: 1; }}
-                #htmx-indicator::after {{
-                    content: '';
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-                    animation: htmx-loading 1.5s ease-in-out infinite;
-                }}
-                @keyframes htmx-loading {{
-                    0% {{ transform: translateX(-100%); }}
-                    100% {{ transform: translateX(100%); }}
-                }}
-
-                /* Prevent body scroll when modal is open */
-                body.modal-open {{ overflow: hidden; }}
-            </style>
+            {{# Live runtime client + morphdom (served from /static/hotframe/). #}}
+            {{{{ live_assets() }}}}
 
             {{%- block head_extra %}}{{%- endblock %}}
         </head>
-        <body hx-boost="true" hx-ext="morph,preload,loading-states,sse" hx-headers='{{"X-CSRF-Token": "{{{{ csrf_token }}}}"}}' {{%- block body_attrs %}}{{%- endblock %}}>
-
-            {{# Fixed top progress bar #}}
-            <div id="htmx-indicator"></div>
+        <body {{%- block body_attrs %}}{{%- endblock %}}>
 
             {{%- block body %}}
             {{%- block content %}}{{%- endblock %}}
             {{%- endblock %}}
 
-            {{# Modal container — for HTMX-loaded modals #}}
-            <div id="modal-container"></div>
-
-            {{# Toast container #}}
+            {{# Toast container — live components dispatch hf:toast events. #}}
             <div id="toast-container" style="position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); z-index:9999; display:flex; flex-direction:column; gap:0.5rem; align-items:center;"></div>
 
-            {{# ================================================================== #}}
-            {{# Toast & Confirm — UI primitives                                   #}}
-            {{# ================================================================== #}}
             <script nonce="{{{{ csp_nonce }}}}">
             (function() {{
-                var icons = {{
-                    info: '<svg style="width:20px;height:20px;flex-shrink:0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"/></svg>',
-                    success: '<svg style="width:20px;height:20px;flex-shrink:0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>',
-                    warning: '<svg style="width:20px;height:20px;flex-shrink:0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>',
-                    error: '<svg style="width:20px;height:20px;flex-shrink:0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"/></svg>'
-                }};
-
-                window.dismissToast = function(el) {{
-                    el.style.opacity = '0';
-                    el.style.transform = 'translateY(10px)';
-                    setTimeout(function() {{ el.remove(); }}, 300);
-                }};
-
                 window.showToast = function(message, type, duration) {{
-                    type = type || 'default';
+                    type = type || 'info';
                     duration = duration || 4000;
                     var container = document.getElementById('toast-container');
                     if (!container) return;
-                    var icon = icons[type] || '';
                     var el = document.createElement('div');
                     el.style.cssText = 'display:flex; align-items:center; gap:0.5rem; padding:0.75rem 1rem; border-radius:0.5rem; background:#1f2937; color:#fff; font-size:0.875rem; box-shadow:0 4px 12px rgba(0,0,0,0.15); transition:opacity 0.3s, transform 0.3s; max-width:24rem;';
-                    el.innerHTML = icon + '<span>' + message + '</span>';
-                    el.onclick = function() {{ window.dismissToast(el); }};
+                    el.textContent = message;
+                    el.onclick = function() {{ el.remove(); }};
                     container.appendChild(el);
-                    setTimeout(function() {{ window.dismissToast(el); }}, duration);
+                    setTimeout(function() {{ el.remove(); }}, duration);
                 }};
 
-                window.Toast = {{
-                    success: function(msg, dur) {{ showToast(msg, 'success', dur); }},
-                    error: function(msg, dur) {{ showToast(msg, 'error', dur || 5000); }},
-                    warning: function(msg, dur) {{ showToast(msg, 'warning', dur); }},
-                    info: function(msg, dur) {{ showToast(msg, 'info', dur); }}
-                }};
-
-                window.showConfirm = function(header, message, onConfirm, confirmLabel, cancelLabel) {{
-                    var backdrop = document.createElement('div');
-                    backdrop.style.cssText = 'position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center;';
-                    backdrop.innerHTML =
-                        '<div style="background:#fff; border-radius:0.75rem; padding:1.5rem; max-width:24rem; width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.3);">' +
-                            '<h3 style="margin:0 0 0.5rem; font-size:1.125rem;">' + header + '</h3>' +
-                            '<p style="margin:0 0 1.5rem; color:#6b7280;">' + message + '</p>' +
-                            '<div style="display:flex; justify-content:flex-end; gap:0.5rem;">' +
-                                '<button data-action="cancel" style="padding:0.5rem 1rem; border:1px solid #d1d5db; border-radius:0.375rem; background:#fff; cursor:pointer;">' + (cancelLabel || 'Cancel') + '</button>' +
-                                '<button data-action="confirm" style="padding:0.5rem 1rem; border:none; border-radius:0.375rem; background:#3b82f6; color:#fff; cursor:pointer;">' + (confirmLabel || 'Confirm') + '</button>' +
-                            '</div>' +
-                        '</div>';
-                    document.body.appendChild(backdrop);
-                    document.body.classList.add('modal-open');
-                    function close() {{
-                        document.body.classList.remove('modal-open');
-                        backdrop.remove();
-                    }}
-                    backdrop.querySelector('[data-action="cancel"]').addEventListener('click', close);
-                    backdrop.querySelector('[data-action="confirm"]').addEventListener('click', function() {{
-                        close();
-                        if (onConfirm) onConfirm();
-                    }});
-                    backdrop.addEventListener('click', function(e) {{
-                        if (e.target === backdrop) close();
-                    }});
-                }};
-
-                {{# HX-Trigger event listeners #}}
-                document.body.addEventListener('showMessage', function(e) {{
+                document.addEventListener('hf:toast', function(e) {{
                     var d = e.detail || {{}};
-                    var msg = d.message || d.value || '';
-                    if (msg) showToast(msg, d.type || 'success', d.type === 'error' ? 5000 : 4000);
-                }});
-                document.body.addEventListener('showNotification', function(e) {{
-                    var d = e.detail || {{}};
-                    var text = d.title ? (d.title + ': ' + (d.message || '')) : (d.message || '');
-                    if (text) showToast(text, d.type || 'default');
+                    if (d.msg) showToast(d.msg, d.level, d.level === 'error' ? 5000 : 4000);
                 }});
             }})();
             </script>
 
             {{%- block scripts %}}{{%- endblock %}}
-
-            {{# ================================================================== #}}
-            {{# Alpine.js Global Stores (nav + sidebar + ui)                      #}}
-            {{# ================================================================== #}}
-            <script nonce="{{{{ csp_nonce }}}}">
-            document.addEventListener('alpine:init', function() {{
-                {{# Navigation Store — tracks current active path #}}
-                Alpine.store('nav', {{
-                    currentPath: window.location.pathname,
-                    setPath: function(path) {{
-                        this.currentPath = path;
-                    }},
-                    isActive: function(itemPath) {{
-                        if (!itemPath || !this.currentPath) return false;
-                        return this.currentPath === itemPath ||
-                               this.currentPath.startsWith(itemPath + '/');
-                    }},
-                    init: function() {{}}
-                }});
-
-                {{# Sidebar Store — open/close sidebar state #}}
-                Alpine.store('sidebar', {{
-                    isOpen: false,
-                    title: '',
-                    open: function(title) {{
-                        this.title = title || '';
-                        this.isOpen = true;
-                    }},
-                    close: function() {{
-                        this.isOpen = false;
-                        this.title = '';
-                    }},
-                    toggle: function() {{
-                        this.isOpen = !this.isOpen;
-                    }}
-                }});
-
-                {{# UI Store — toast from Alpine components #}}
-                Alpine.store('ui', {{
-                    toast: function(message, type, duration) {{
-                        if (typeof showToast === 'function') {{
-                            showToast(message, type || 'default', duration || 4000);
-                        }}
-                    }},
-                    success: function(message) {{ this.toast(message, 'success'); }},
-                    error: function(message) {{ this.toast(message, 'error', 5000); }}
-                }});
-            }});
-            </script>
-
-            {{# ================================================================== #}}
-            {{# HTMX — progress indicator, CSRF helper, script re-execution       #}}
-            {{# ================================================================== #}}
-            <script nonce="{{{{ csp_nonce }}}}">
-            document.addEventListener('DOMContentLoaded', function() {{
-                {{# Progress indicator — show/hide during HTMX requests #}}
-                document.body.addEventListener('htmx:beforeRequest', function() {{
-                    document.body.classList.add('htmx-request');
-                }});
-                document.body.addEventListener('htmx:afterRequest', function() {{
-                    document.body.classList.remove('htmx-request');
-                }});
-
-                {{# CSRF helper for manual fetch() calls #}}
-                window.getCsrfToken = function() {{
-                    var match = document.cookie.match(/(^|;\\s*)csrf_token=([^;]+)/);
-                    return match ? match[2] : '';
-                }};
-
-                {{# ============================================================ #}}
-                {{# Script re-execution after HTMX morph swap.                   #}}
-                {{# Idiomorph does NOT execute inline scripts — this handler      #}}
-                {{# re-executes them and reinitializes Alpine + Iconify.          #}}
-                {{# ============================================================ #}}
-                var _pageNonce = '{{{{ csp_nonce }}}}';
-                var _executedScripts = new WeakSet();
-
-                document.body.addEventListener('htmx:afterSettle', function(event) {{
-                    var target = event.detail.target;
-                    if (!target) return;
-
-                    var scripts = target.querySelectorAll('script:not([src])');
-                    var executed = 0;
-                    scripts.forEach(function(oldScript) {{
-                        if (_executedScripts.has(oldScript)) return;
-
-                        var newScript = document.createElement('script');
-                        newScript.nonce = _pageNonce;
-                        newScript.textContent = oldScript.textContent;
-
-                        Array.from(oldScript.attributes).forEach(function(attr) {{
-                            if (attr.name !== 'nonce' && attr.name !== 'type') {{
-                                newScript.setAttribute(attr.name, attr.value);
-                            }}
-                        }});
-
-                        oldScript.parentNode.replaceChild(newScript, oldScript);
-                        _executedScripts.add(newScript);
-                        executed++;
-                    }});
-
-                    {{# Re-initialize Alpine components after script re-execution #}}
-                    if (executed > 0 && typeof Alpine !== 'undefined') {{
-                        Promise.resolve().then(function() {{
-                            try {{
-                                Alpine.initTree(target);
-                            }} catch (e) {{
-                                console.warn('[HTMX] Alpine.initTree error:', e.message);
-                            }}
-                        }});
-                    }}
-
-                    {{# Re-scan for Iconify icons in swapped content #}}
-                    if (typeof Iconify !== 'undefined') {{
-                        Iconify.scan(target);
-                    }}
-                }});
-
-                {{# Update nav store when URL changes via HTMX #}}
-                document.body.addEventListener('htmx:pushedIntoHistory', function(event) {{
-                    if (typeof Alpine !== 'undefined' && Alpine.store('nav')) {{
-                        Alpine.store('nav').setPath(event.detail.path);
-                    }}
-                }});
-
-                window.addEventListener('popstate', function() {{
-                    if (typeof Alpine !== 'undefined' && Alpine.store('nav')) {{
-                        Alpine.store('nav').setPath(window.location.pathname);
-                    }}
-                }});
-            }});
-            </script>
         </body>
         </html>
     """)
@@ -731,7 +450,7 @@ def startproject(name: str) -> None:
             <li><code>hf startmodule blog</code> — create a dynamic module</li>
             <li>Edit <code>settings.py</code> to configure your project</li>
         </ul>
-        <p><small>Powered by <a href="https://github.com/ERPlora/hotframe">hotframe</a></small></p>
+        <p><small>Powered by <a href="https://hotframe.dev">hotframe</a></small></p>
         {% endblock %}
     """)
     )
@@ -758,13 +477,9 @@ def startproject(name: str) -> None:
     (alert_dir / "template.html").write_text(
         dedent("""\
         {# Example component generated by `hf startproject`. Delete or modify as needed. #}
-        {# Usage: {% component 'alert' type='warning' dismissible=true %}body{% endcomponent %} #}
-        <div class="alert alert-{{ type | default('info') }}" role="alert"
-            {% if dismissible | default(false) %}x-data="{show: true}" x-show="show"{% endif %}>
+        {# Usage: {% component 'alert' type='warning' %}body{% endcomponent %} #}
+        <div class="alert alert-{{ type | default('info') }}" role="alert">
             {{ body }}
-            {% if dismissible | default(false) %}
-            <button type="button" aria-label="Dismiss" @click="show = false">&times;</button>
-            {% endif %}
         </div>
     """)
     )
@@ -856,7 +571,7 @@ def startapp(name: str) -> None:
 
     (app_dir / "routes.py").write_text(
         dedent(f'''\
-        """HTMX views."""
+        """HTML view routes."""
         from fastapi import APIRouter
 
         router = APIRouter(prefix="/{name}", tags=["{name}"])
@@ -898,7 +613,7 @@ def startapp(name: str) -> None:
 @app.command()
 def startmodule(
     name: str,
-    api_only: bool = typer.Option(False, "--api-only", help="API only, no HTMX views"),
+    api_only: bool = typer.Option(False, "--api-only", help="API only, no HTML views"),
     system: bool = typer.Option(
         False,
         "--system",
@@ -967,7 +682,7 @@ def startmodule(
     if has_views:
         (mod_dir / "routes.py").write_text(
             dedent(f'''\
-            """HTMX views for {verbose}."""
+            """HTML view routes for {verbose}."""
             from fastapi import APIRouter, Request
             from fastapi.responses import HTMLResponse
 

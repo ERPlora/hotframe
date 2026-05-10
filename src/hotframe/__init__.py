@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """hotframe — Modular Python web framework with hot-mount dynamic modules."""
 
-__version__ = "0.2.1"
+__version__ = "1.0.0"
 
 # ---------------------------------------------------------------------------
 # Lazy imports — only loaded when accessed
@@ -42,14 +42,13 @@ _LAZY_IMPORTS: dict[str, str] = {
     "register_event": "hotframe.signals.types",
     # ORM
     "setup_orm_events": "hotframe.orm.events",
-    # Views — reactive (Datastar) decorator + helpers
+    # Views — @view decorator + plain HTTP redirect / refresh / message helpers
     "view": "hotframe.views.responses",
     "is_reactive_request": "hotframe.views.responses",
     "reactive_redirect": "hotframe.views.responses",
     "reactive_refresh": "hotframe.views.responses",
     "reactive_trigger": "hotframe.views.responses",
     "reactive_message": "hotframe.views.responses",
-    # Views — legacy HTMX aliases (removed in 0.3)
     "htmx_view": "hotframe.views.responses",
     "is_htmx_request": "hotframe.views.responses",
     "htmx_redirect": "hotframe.views.responses",
@@ -110,14 +109,11 @@ _LAZY_IMPORTS: dict[str, str] = {
     "RefreshInterceptor": "hotframe.http",
     "exponential_backoff": "hotframe.http",
     "discover_interceptors": "hotframe.http",
-    # Reactivity (Datastar facade)
-    "reactive": "hotframe.reactivity",
-    "sse_response": "hotframe.reactivity",
-    "SSEResponse": "hotframe.reactivity",
-    "ServerSentEventGenerator": "hotframe.reactivity",
-    "read_signals": "hotframe.reactivity",
-    "ReadSignals": "hotframe.reactivity",
-    "SSE_HEADERS": "hotframe.reactivity",
+    # Live runtime — stateful, server-rendered, WebSocket-driven components.
+    "LiveComponent": "hotframe.live",
+    "LiveSession": "hotframe.live",
+    "LiveRuntime": "hotframe.live",
+    "event": "hotframe.live",
 }
 
 

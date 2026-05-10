@@ -1,13 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 """
-Unified ``@view`` decorator and reactive (Datastar) response helpers.
+``@view`` decorator and HTTP response helpers.
 
-Detects the ``Datastar-Request`` header to decide between full-page and
-partial rendering, mirroring the role HTMX used to play. Legacy
-``htmx_*`` names are kept as aliases for backward compatibility and will
-be removed in 0.3.
+``@view`` provides the conventions for HTML routes: session-based auth,
+permission gating, automatic template discovery (``{module}/pages/{view}.html``),
+and full-page server-rendered HTML. Reactive UI updates are not the
+responsibility of these helpers — they live on the WebSocket-backed
+:mod:`hotframe.live` runtime instead.
 
-Permission resolution is configurable via ``settings.PERMISSION_RESOLVER``.
+The redirect / refresh / message helpers exposed here are simple HTTP
+responses (303 redirect, meta-refresh, inline HTML toast) that any
+non-live route can return.
 """
 
 from __future__ import annotations
@@ -26,7 +29,6 @@ from sse_starlette.sse import EventSourceResponse
 from starlette.responses import RedirectResponse, Response
 
 from hotframe.auth.auth import get_session_user_id
-from hotframe.reactivity import ServerSentEventGenerator, SSEResponse
 
 logger = logging.getLogger(__name__)
 
@@ -59,16 +61,19 @@ async def _resolve_permissions(request: Request, user_id: Any) -> list[str]:
 
 
 def is_reactive_request(request: Request) -> bool:
-    """Return ``True`` when the request was made by a Datastar client.
+    """Return ``False``.
 
-    Detection is based on the ``Datastar-Request`` header that the
-    Datastar runtime attaches to fetch/SSE calls.
+    All HTTP routes serve full pages; live updates flow over the
+    WebSocket runtime in :mod:`hotframe.live`, never via per-request
+    headers. The function is kept so callers that wrap branches around
+    it remain well-typed; new code should not rely on it.
     """
-    if "Datastar-Request" in request.headers:
-        return True
-    # Escape hatch for tests / manual calls — same convention as the legacy
-    # HTMX path used.
-    return request.query_params.get("partial") == "true"
+    return False
+
+
+def is_htmx_request(request: Request) -> bool:
+    """Alias of :func:`is_reactive_request`."""
+    return is_reactive_request(request)
 
 
 # ---------------------------------------------------------------------------
@@ -139,12 +144,15 @@ def view(
     login_required: bool = True,
     permissions: list[str] | str | None = None,
 ) -> Callable:
-    """Unified view decorator.
+    """View decorator for HTML routes.
 
-    Replaces the legacy ``@htmx_view``: detects Datastar requests via the
-    ``Datastar-Request`` header and renders either the partial template
-    (reactive request) or the full page template (regular browser
-    navigation). Auth and permission checks are unchanged.
+    Performs auth + permission checks, resolves templates by
+    convention (``{module}/pages/{view}.html`` and variants), and
+    renders the result as a full HTML page.
+
+    ``partial_template`` is reserved for the rare case where a route
+    deliberately returns only an inner block. To override the resolved
+    template, pass a ``template`` key in the result dict.
     """
     if isinstance(permissions, str):
         permissions = [permissions]
@@ -160,8 +168,6 @@ def view(
             if login_required:
                 user_id = get_session_user_id(request)
                 if user_id is None:
-                    if is_reactive_request(request):
-                        return reactive_redirect(settings.AUTH_LOGIN_URL)
                     return RedirectResponse(settings.AUTH_LOGIN_URL, status_code=302)
 
                 if permissions:
@@ -177,9 +183,10 @@ def view(
                         request.state.user_permissions = user_perms
 
                     if not all(has_permission(user_perms, p) for p in permissions):
-                        if is_reactive_request(request):
-                            return reactive_redirect(settings.AUTH_UNAUTHORIZED_URL)
-                        return RedirectResponse(settings.AUTH_UNAUTHORIZED_URL, status_code=302)
+                        return RedirectResponse(
+                            settings.AUTH_UNAUTHORIZED_URL,
+                            status_code=302,
+                        )
 
             # 2. Call the view function
             result = await func(request, *args, **kwargs)
@@ -217,9 +224,6 @@ def view(
                 if not _full:
                     _full = _resolve_template(env_id, module_id, view_id, "full")
 
-            # 5. Render
-            if is_reactive_request(request):
-                return _render_partial(templates, request, merged, _partial, _full)
             return _render_full(templates, request, merged, _full, _partial)
 
         return wrapper
@@ -227,36 +231,13 @@ def view(
     return decorator
 
 
-# Backward compat alias — to be removed in 0.3.
+# Alias.
 htmx_view = view
 
 
 # ---------------------------------------------------------------------------
 # Render helpers (private)
 # ---------------------------------------------------------------------------
-
-
-def _render_partial(
-    templates: Any,
-    request: Request,
-    context: dict[str, Any],
-    partial: str | None,
-    full: str | None,
-) -> Response:
-    tpl_name = context.pop("template", None) or partial or full
-    if not tpl_name:
-        return HTMLResponse("No template configured", status_code=500)
-
-    try:
-        return templates.TemplateResponse(request, tpl_name, context)
-    except Exception as exc:
-        logger.error("Template render error in %s: %s", tpl_name, exc)
-        return HTMLResponse(
-            f'<div class="alert alert-error">'
-            f"<strong>Template Error</strong>: {tpl_name}<br>"
-            f"<small>{type(exc).__name__}: {exc}</small></div>",
-            status_code=500,
-        )
 
 
 def _render_full(
@@ -281,66 +262,68 @@ def _render_full(
 
 
 # ---------------------------------------------------------------------------
-# Reactive (Datastar) response helpers
+# Redirect / refresh / message helpers
+# ---------------------------------------------------------------------------
+#
+# Plain HTTP responses any non-live route can return. Live components
+# call ``self.navigate(...)`` / ``self.toast(...)`` instead and never
+# go through these helpers.
 # ---------------------------------------------------------------------------
 
 
-def reactive_redirect(url: str) -> SSEResponse:
-    """Server-driven redirect for Datastar clients.
-
-    Emits a single SSE event using ``ServerSentEventGenerator.redirect``.
-    """
-    return SSEResponse([ServerSentEventGenerator.redirect(url)])
+def reactive_redirect(url: str) -> Response:
+    """Issue a 303 See Other redirect."""
+    return RedirectResponse(url, status_code=303)
 
 
-def reactive_refresh() -> SSEResponse:
-    """Force a full page reload on the Datastar client.
-
-    Emits an ``execute_script`` SSE event running ``location.reload()``.
-    """
-    return SSEResponse([ServerSentEventGenerator.execute_script("location.reload()")])
+def reactive_refresh() -> Response:
+    """Reload the current page via ``<meta http-equiv="refresh">``."""
+    return HTMLResponse('<meta http-equiv="refresh" content="0">', status_code=200)
 
 
-def reactive_trigger(name: str, **detail: Any) -> SSEResponse:
-    """Dispatch a custom DOM event on the Datastar client.
+def reactive_trigger(name: str, **detail: Any) -> Response:
+    """Dispatch a ``CustomEvent`` on the client.
 
-    Emits an ``execute_script`` SSE event that calls
-    ``window.dispatchEvent(new CustomEvent(name, {detail: ...}))``.
+    Returns an HTML fragment with a one-line inline script that calls
+    ``window.dispatchEvent``. Useful for non-live routes that need to
+    notify a listener already in the DOM.
     """
     payload = json.dumps(detail, ensure_ascii=False, default=str)
-    script = f"window.dispatchEvent(new CustomEvent({json.dumps(name)}, {{detail: {payload}}}))"
-    return SSEResponse([ServerSentEventGenerator.execute_script(script)])
+    script = (
+        f"<script>window.dispatchEvent(new CustomEvent("
+        f"{json.dumps(name)}, {{detail: {payload}}}))</script>"
+    )
+    return HTMLResponse(script, status_code=200)
+
+
+def reactive_message(level: str, text: str) -> Response:
+    """Return an HTML fragment representing a flash toast."""
+    safe_level = (level or "info").replace('"', "")
+    safe_text = str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return HTMLResponse(
+        f'<div class="toast toast-{safe_level}" role="status">{safe_text}</div>',
+        status_code=200,
+    )
 
 
 # ---------------------------------------------------------------------------
-# Backward-compat shims (legacy HTMX helpers)
+# Aliases
 # ---------------------------------------------------------------------------
 
 
-def htmx_redirect(url: str) -> SSEResponse:
-    """Legacy alias for :func:`reactive_redirect`. Removed in 0.3."""
+def htmx_redirect(url: str) -> Response:
     return reactive_redirect(url)
 
 
-def htmx_refresh() -> SSEResponse:
-    """Legacy alias for :func:`reactive_refresh`. Removed in 0.3."""
+def htmx_refresh() -> Response:
     return reactive_refresh()
 
 
 def htmx_trigger(event: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Legacy helper that returns a payload dict.
-
-    Kept as a thin compatibility shim for callers still building
-    ``HX-Trigger`` style dicts. Removed in 0.3.
-    """
+    """Return an event-payload dict suitable for trigger headers."""
     if data:
         return {event: data}
     return {event: True}
-
-
-def is_htmx_request(request: Request) -> bool:
-    """Legacy alias for :func:`is_reactive_request`. Removed in 0.3."""
-    return is_reactive_request(request)
 
 
 # ---------------------------------------------------------------------------
@@ -351,51 +334,18 @@ def is_htmx_request(request: Request) -> bool:
 def add_message(request: Request, level: str, text: str) -> None:
     """Append a flash message for the current request.
 
-    Public API is unchanged. Internally, when the request is reactive
-    (Datastar), the message is emitted as a ``patch_elements`` SSE event
-    targeting ``#toast-container``; otherwise it is stored on the
-    request for the session-flash middleware to pick up on the next
-    full page response.
+    Stored on ``request.state._messages``; the session-flash middleware
+    replays it on the next full-page response. Live components call
+    ``self.toast(...)`` directly instead and never touch this.
     """
     if not hasattr(request.state, "_messages"):
         request.state._messages = []
     request.state._messages.append({"level": level, "text": text})
 
 
-def _toast_html(level: str, text: str) -> str:
-    """Render the toast HTML used by reactive flash messages."""
-    safe_level = (level or "info").replace('"', "")
-    safe_text = (
-        str(text)
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
-    return (
-        f'<div class="toast toast-{safe_level}" role="status">{safe_text}</div>'
-    )
-
-
-def reactive_message(level: str, text: str) -> SSEResponse:
-    """Standalone reactive toast response.
-
-    Useful when a handler wants to return *only* a toast without going
-    through ``add_message`` + middleware. Emits a ``patch_elements`` SSE
-    event that appends the toast into ``#toast-container``.
-    """
-    html = _toast_html(level, text)
-    return SSEResponse(
-        [
-            ServerSentEventGenerator.patch_elements(
-                html,
-                selector="#toast-container",
-                mode="append",
-            )
-        ]
-    )
-
-
-# ====== SSE Responses ======
+# ---------------------------------------------------------------------------
+# Generic SSE stream — useful for one-way pushes (log tailing etc.)
+# ---------------------------------------------------------------------------
 
 
 async def sse_stream(
@@ -405,7 +355,12 @@ async def sse_stream(
     event_type: str = "message",
     ping_interval: int = 15,
 ) -> EventSourceResponse:
-    """Wrap an async generator as a Server-Sent Events response with disconnect detection."""
+    """Wrap an async generator as a Server-Sent Events response.
+
+    A plain SSE helper for one-way pushes (log streaming, progress
+    updates). The LiveComponent runtime has its own WebSocket path
+    and does not use this.
+    """
 
     async def event_generator() -> AsyncGenerator[dict[str, str], None]:
         try:

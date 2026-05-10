@@ -1,4 +1,9 @@
-"""Tests for hotframe.views."""
+"""Tests for ``hotframe.views.responses``.
+
+Auth + permission gating, full-page render, plain HTTP redirect /
+refresh / message helpers. Real-time updates live in
+``hotframe.live`` and are tested separately.
+"""
 
 from __future__ import annotations
 
@@ -47,11 +52,14 @@ async def _collect_body(response) -> str:
 
 def _body(response) -> str:
     """Run _collect_body on a fresh loop so it works inside pytest-asyncio tests too."""
+    # Streaming responses expose body_iterator; the simple HTML/Redirect
+    # responses we now return have a plain `body` attribute.
+    if hasattr(response, "body") and response.body:
+        return response.body.decode("utf-8")
     try:
         asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(_collect_body(response))
-    # We're inside an event loop — drain on a new one in a worker thread.
     import concurrent.futures
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
@@ -59,51 +67,44 @@ def _body(response) -> str:
 
 
 class TestIsReactiveRequest:
-    def test_detects_datastar_header(self):
-        req = _make_request({"Datastar-Request": "true"})
-        assert is_reactive_request(req) is True
+    """``is_reactive_request`` returns False — every HTTP request is a full page."""
 
-    def test_no_header_no_query(self):
+    def test_returns_false_when_no_extra_headers(self):
         req = _make_request()
         assert is_reactive_request(req) is False
 
-    def test_partial_query_param_escape_hatch(self):
-        req = _make_request(query="partial=true")
-        assert is_reactive_request(req) is True
+    def test_returns_false_even_with_arbitrary_headers(self):
+        req = _make_request({"X-Custom": "anything"})
+        assert is_reactive_request(req) is False
 
-    def test_legacy_alias(self):
-        """is_htmx_request is the backward-compat alias for is_reactive_request."""
-        req = _make_request({"Datastar-Request": "true"})
-        assert is_htmx_request(req) is True
+    def test_alias_matches(self):
         assert is_htmx_request(_make_request()) is False
+        assert is_htmx_request(_make_request({"X-Custom": "anything"})) is False
 
 
 class TestReactiveRedirect:
-    def test_returns_sse_event_with_redirect(self):
+    def test_emits_303_redirect(self):
         response = reactive_redirect("/login")
-        body = _body(response)
-        assert response.headers["content-type"].startswith("text/event-stream")
-        assert "datastar-patch-elements" in body
-        assert "/login" in body
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login"
 
-    def test_legacy_htmx_redirect_alias(self):
+    def test_htmx_redirect_alias(self):
         response = htmx_redirect("/login")
-        body = _body(response)
-        assert "/login" in body
-        assert "datastar-patch-elements" in body
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login"
 
 
 class TestReactiveRefresh:
-    def test_emits_location_reload(self):
+    def test_emits_meta_refresh(self):
         response = reactive_refresh()
         body = _body(response)
-        assert "location.reload()" in body
-        assert "datastar-patch-elements" in body
+        assert 'http-equiv="refresh"' in body
+        assert response.status_code == 200
 
-    def test_legacy_htmx_refresh_alias(self):
+    def test_htmx_refresh_alias(self):
         response = htmx_refresh()
         body = _body(response)
-        assert "location.reload()" in body
+        assert 'http-equiv="refresh"' in body
 
 
 class TestReactiveTrigger:
@@ -124,7 +125,6 @@ class TestReactiveTrigger:
 
 class TestLegacyHtmxTrigger:
     def test_htmx_trigger_simple(self):
-        # Legacy compat shim: still returns a dict payload.
         result = htmx_trigger("cartUpdated")
         assert result == {"cartUpdated": True}
 
@@ -134,11 +134,9 @@ class TestLegacyHtmxTrigger:
 
 
 class TestReactiveMessage:
-    def test_emits_toast_patch(self):
+    def test_emits_toast_html(self):
         response = reactive_message("success", "Item created")
         body = _body(response)
-        assert "datastar-patch-elements" in body
-        assert "#toast-container" in body
         assert "Item created" in body
         assert "toast-success" in body
 
@@ -161,65 +159,46 @@ class TestAddMessage:
 
 
 class TestViewDecorator:
-    """The new `view` decorator detects Datastar via the request header.
-
-    These tests run the wrapper directly with a stub Request — they do
-    not exercise template rendering (covered by integration tests).
-    """
+    """``view`` performs auth + permission gating, then full-page render."""
 
     def test_view_is_callable_and_alias_matches(self):
         assert callable(view)
-        # htmx_view kept as alias during 0.2.x.
         assert htmx_view is view
 
     @pytest.mark.asyncio
-    async def test_login_required_redirects_full_page_when_not_reactive(self, monkeypatch):
-        from hotframe.config.settings import HotframeSettings
-
-        # Monkeypatch get_settings so AUTH_LOGIN_URL is deterministic.
-        settings = HotframeSettings(AUTH_LOGIN_URL="/login")
-        monkeypatch.setattr(
-            "hotframe.config.settings.get_settings", lambda: settings
-        )
-        # Stub session_user_id to None.
-        monkeypatch.setattr(
-            "hotframe.views.responses.get_session_user_id", lambda r: None
-        )
-
-        @view(login_required=True)
-        async def handler(request):  # pragma: no cover — auth blocks before call
-            return {}
-
-        req = _make_request()
-        resp = await handler(req)
-        # Plain HTTP redirect, not a reactive SSE redirect.
-        assert resp.status_code == 302
-        assert resp.headers["location"] == "/login"
-
-    @pytest.mark.asyncio
-    async def test_login_required_returns_reactive_redirect_when_datastar(
-        self, monkeypatch
-    ):
+    async def test_login_required_redirects_when_no_user(self, monkeypatch):
         from hotframe.config.settings import HotframeSettings
 
         settings = HotframeSettings(AUTH_LOGIN_URL="/login")
-        monkeypatch.setattr(
-            "hotframe.config.settings.get_settings", lambda: settings
-        )
-        monkeypatch.setattr(
-            "hotframe.views.responses.get_session_user_id", lambda r: None
-        )
+        monkeypatch.setattr("hotframe.config.settings.get_settings", lambda: settings)
+        monkeypatch.setattr("hotframe.views.responses.get_session_user_id", lambda r: None)
 
         @view(login_required=True)
         async def handler(request):  # pragma: no cover
             return {}
 
-        req = _make_request({"Datastar-Request": "true"})
+        req = _make_request()
         resp = await handler(req)
-        body = _body(resp)
-        # Reactive redirect = streaming SSE event, not a 302.
-        assert resp.headers["content-type"].startswith("text/event-stream")
-        assert "/login" in body
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "/login"
+
+    @pytest.mark.asyncio
+    async def test_login_required_redirects_regardless_of_extra_headers(self, monkeypatch):
+        """Auth always returns a plain 302 redirect; no per-header branches."""
+        from hotframe.config.settings import HotframeSettings
+
+        settings = HotframeSettings(AUTH_LOGIN_URL="/login")
+        monkeypatch.setattr("hotframe.config.settings.get_settings", lambda: settings)
+        monkeypatch.setattr("hotframe.views.responses.get_session_user_id", lambda r: None)
+
+        @view(login_required=True)
+        async def handler(request):  # pragma: no cover
+            return {}
+
+        req = _make_request({"X-Custom": "anything"})
+        resp = await handler(req)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "/login"
 
 
 class TestBroadcast:

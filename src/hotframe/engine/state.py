@@ -238,9 +238,7 @@ class ModuleStateDB:
         rows — the next reboot leaves the module dormant until the user
         reactivates it through the UI, matching the design in doc 05.
         """
-        await self.set_status(
-            session, module_id, "degraded", error=error_message, **filters
-        )
+        await self.set_status(session, module_id, "degraded", error=error_message, **filters)
         logger.warning("Module %s marked degraded: %s", module_id, error_message)
 
     async def update_manifest(

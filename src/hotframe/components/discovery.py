@@ -64,27 +64,41 @@ def _load_module_from_file(py_path: Path, module_name: str):
     return module
 
 
-def _find_component_class(module) -> type[Component] | None:
+def _find_component_class(module) -> type | None:
     """
-    Locate the first class in ``module`` that inherits from
-    :class:`Component` (excluding ``Component`` itself).
+    Locate the first class in ``module`` that is a valid component base.
+
+    Accepts subclasses of :class:`Component` (stateless, template-only)
+    or :class:`hotframe.live.LiveComponent` (stateful, live runtime).
+    The two hierarchies are independent — ``LiveComponent`` does NOT
+    inherit from ``Component`` because they validate via different
+    Pydantic models — so we have to check both.
+
+    Excludes the base classes themselves to avoid accidentally
+    "discovering" the imported base.
     """
+    # Local import to avoid a circular dependency with hotframe.live
+    # (which imports from hotframe.components in turn).
+    from hotframe.live.base import LiveComponent
+
+    bases = (Component, LiveComponent)
+
     for _attr_name, attr in inspect.getmembers(module, inspect.isclass):
-        if attr is Component:
+        if attr in bases:
             continue
-        if issubclass(attr, Component) and attr.__module__ == module.__name__:
+        if issubclass(attr, bases) and attr.__module__ == module.__name__:
             return attr
     # Fallback: accept a subclass even if it was re-exported from another module.
     for _attr_name, attr in inspect.getmembers(module, inspect.isclass):
-        if attr is Component:
+        if attr in bases:
             continue
-        if issubclass(attr, Component):
+        if issubclass(attr, bases):
             return attr
     return None
 
 
 def _build_render_fn(
-    props_cls: type[Component] | None,
+    props_cls: type | None,
 ) -> Callable[..., dict] | None:
     """
     Build the per-component ``render_fn`` used at render time.
@@ -95,8 +109,26 @@ def _build_render_fn(
 
     Template-only components (no ``props_cls``) do not need a
     ``render_fn`` — the raw kwargs pass through unchanged.
+
+    Live components (subclasses of :class:`hotframe.live.LiveComponent`)
+    are rendered through the live runtime (``hotframe.live.diff``) and
+    should not use ``render_fn`` at all — the live render path bypasses
+    this entirely. We return ``None`` for them so a stray
+    ``render_component('todo_list', ...)`` call falls into the default
+    template-only path with raw kwargs (and logs a misuse warning at
+    the call site).
     """
     if props_cls is None:
+        return None
+
+    # Live components do not render via render_fn — they have their own path.
+    from hotframe.live.base import LiveComponent
+
+    if issubclass(props_cls, LiveComponent):
+        return None
+
+    if not issubclass(props_cls, Component):
+        # Unknown class — skip render_fn rather than crash.
         return None
 
     def render_fn(**props) -> dict:
@@ -124,8 +156,12 @@ def _load_router(py_path: Path, module_name: str) -> APIRouter | None:
     return router
 
 
-def _load_component_class(py_path: Path, module_name: str) -> type[Component] | None:
-    """Import ``component.py`` and return the first Component subclass found."""
+def _load_component_class(py_path: Path, module_name: str) -> type | None:
+    """Import ``component.py`` and return the first component class found.
+
+    Returns the first subclass of :class:`Component` or
+    :class:`hotframe.live.LiveComponent` declared in the file.
+    """
     try:
         mod = _load_module_from_file(py_path, module_name)
     except Exception:
@@ -133,9 +169,7 @@ def _load_component_class(py_path: Path, module_name: str) -> type[Component] | 
         return None
     cls = _find_component_class(mod)
     if cls is None:
-        logger.warning(
-            "Component file %s has no subclass of hotframe.components.Component", py_path
-        )
+        logger.warning("Component file %s has no Component or LiveComponent subclass", py_path)
     return cls
 
 
@@ -214,14 +248,24 @@ def discover_components(
 
         name = component_dir.name
 
-        # component.py (optional)
-        props_cls: type[Component] | None = None
+        # component.py (optional). May be a stateless ``Component``
+        # subclass or a stateful ``LiveComponent`` subclass; the entry
+        # records both via ``props_cls`` and ``is_live``.
+        props_cls: type | None = None
         component_py = component_dir / "component.py"
         if component_py.exists():
             props_cls = _load_component_class(
                 component_py,
                 f"{import_prefix}.{name}.component",
             )
+
+        # Detect live components — local import to avoid a circular
+        # dep between hotframe.components and hotframe.live.
+        is_live = False
+        if props_cls is not None:
+            from hotframe.live.base import LiveComponent
+
+            is_live = issubclass(props_cls, LiveComponent)
 
         # routes.py (optional)
         extra_router = None
@@ -248,6 +292,7 @@ def discover_components(
             module_id=module_id,
             static_dir=static_dir,
             props_cls=props_cls,
+            is_live=is_live,
         )
         entries.append(entry)
 

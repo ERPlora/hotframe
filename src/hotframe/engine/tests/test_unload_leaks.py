@@ -207,8 +207,7 @@ async def test_install_uninstall_cycle_stable_memory(tmp_path: Path) -> None:
         # If you see this test go red, run it locally and inspect with
         # ``tracemalloc`` before raising the budget further.
         assert per_cycle < 256 * 1024, (
-            f"RSS grew {growth} bytes over 50 cycles "
-            f"({per_cycle:.0f} bytes/cycle, budget 256 KB)"
+            f"RSS grew {growth} bytes over 50 cycles ({per_cycle:.0f} bytes/cycle, budget 256 KB)"
         )
     finally:
         sys.path.remove(str(tmp_path))
@@ -223,7 +222,7 @@ async def test_install_uninstall_cycle_stable_memory(tmp_path: Path) -> None:
 def _read_rss() -> int | None:
     """Return current RSS in bytes, or None if no measurement is available."""
     try:
-        import psutil  # type: ignore[import-not-found]
+        import psutil  # type: ignore[import-not-found,import-untyped]
     except ImportError:
         psutil = None  # type: ignore[assignment]
 

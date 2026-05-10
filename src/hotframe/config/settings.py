@@ -160,12 +160,12 @@ class HotframeSettings(BaseSettings):
     SESSION_MAX_AGE: int = 86400 * 30  # 30 days
 
     # --- CSP ---
-    # Trusted Types is OFF by default: incompatible with HTMX, Alpine, and
-    # Datastar 1.0, all of which use ``Function()`` / ``insertAdjacentHTML``
-    # patterns that ``require-trusted-types-for 'script'`` blocks. Datastar's
-    # own security docs state that ``unsafe-eval`` is required.
-    # Defense-in-depth still rests on: nonces + CSP, CSRF, Jinja escape,
-    # SameSite=Strict cookies, signed sessions.
+    # Trusted Types stays OFF by default. The runtime client (``live.js`` +
+    # ``morphdom``) uses ``insertAdjacentHTML``-style patterns that the
+    # strict ``require-trusted-types-for 'script'`` directive blocks. Turn
+    # it on only when the project ships a Trusted Types policy compatible
+    # with that pattern. Defense-in-depth otherwise rests on nonces, CSRF,
+    # Jinja autoescape, SameSite cookies, and signed sessions.
     CSP_TRUSTED_TYPES: bool = False
     CSP_ALLOWED_SOURCES: dict[str, list[str]] = {
         "script": [],
@@ -220,7 +220,8 @@ class HotframeSettings(BaseSettings):
 
     # --- Permission resolver ---
     # Dotted path to an async callable ``(request, user_id) -> list[str]``
-    # that returns permission strings for the user. Used by @htmx_view.
+    # that returns permission strings for the user. Used by the ``@view``
+    # decorator when a route declares required permissions.
     PERMISSION_RESOLVER: str = ""
 
     @field_validator("LOG_LEVEL")

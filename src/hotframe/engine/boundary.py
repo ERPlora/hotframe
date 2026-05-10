@@ -46,9 +46,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Regex captures both HTMX (``/m/{id}/...``) and API (``/api/v1/m/{id}/...``)
-# module mount points. Module IDs are constrained to lowercase alphanum +
-# underscore + hyphen — same character set the loader/manifest accept.
+# Regex captures both HTML view (``/m/{id}/...``) and API
+# (``/api/v1/m/{id}/...``) module mount points. Module IDs are
+# constrained to lowercase alphanum + underscore + hyphen — same
+# character set the loader/manifest accept.
 _MODULE_URL = re.compile(r"^/(?:api/v1/)?m/([a-z0-9_-]+)(?:/|$)")
 
 

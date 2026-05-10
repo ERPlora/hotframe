@@ -67,10 +67,7 @@ class RobustSessionMiddleware(SessionMiddleware):
         async def send_with_clear(message: Message) -> None:
             if message["type"] == "http.response.start":
                 headers = list(message.get("headers", []))
-                clear = (
-                    f"{cookie_name}=; Path=/; Max-Age=0; "
-                    "HttpOnly; SameSite=strict"
-                ).encode()
+                clear = (f"{cookie_name}=; Path=/; Max-Age=0; HttpOnly; SameSite=strict").encode()
                 headers.append((b"set-cookie", clear))
                 message = {**message, "headers": headers}
             await send(message)
@@ -93,9 +90,7 @@ def _scope_without_cookie(scope: Scope, cookie_name: str) -> Scope:
             # If even the cookie header is non-decodable, drop it entirely.
             continue
         kept = [
-            part
-            for part in decoded.split(";")
-            if not part.strip().startswith(f"{cookie_name}=")
+            part for part in decoded.split(";") if not part.strip().startswith(f"{cookie_name}=")
         ]
         if kept:
             new_headers.append((name, "; ".join(kept).encode("latin-1")))
